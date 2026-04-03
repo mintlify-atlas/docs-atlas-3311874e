@@ -1,0 +1,164 @@
+---
+title: "Runtime Environments"
+description: "Run Nitro applications with Node.js, Bun, or Deno runtimes."
+---
+
+Nitro supports multiple JavaScript runtimes for self-hosted deployments. Choose the runtime that fits your infrastructure — each produces a standalone `.output/` directory you can deploy anywhere.
+
+<Tabs>
+  <Tab title="Node.js">
+
+## Node.js
+
+Node.js is the default Nitro runtime and the most widely supported option.
+
+Nitro offers three Node.js presets depending on your use case:
+
+| Preset | Use case |
+|--------|----------|
+| `node_server` | Standard single-process HTTP server (default) |
+| `node_cluster` | Multi-process cluster for multi-core performance |
+| `node_middleware` | Low-level handler export for custom servers |
+
+### node_server
+
+**Preset:** `node_server`
+
+Build and start a production Node.js server:
+
+```bash
+nitro build
+node .output/server/index.mjs
+```
+
+The server listens on `http://localhost:3000` by default. Deploy the entire `.output/` directory to your host.
+
+#### Environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NITRO_PORT` / `PORT` | `3000` | Port to listen on |
+| `NITRO_HOST` / `HOST` | — | Host to bind to |
+| `NITRO_UNIX_SOCKET` | — | Path to a UNIX socket file |
+| `NITRO_SSL_CERT` | — | SSL certificate path (use a reverse proxy instead in production) |
+| `NITRO_SSL_KEY` | — | SSL key path |
+| `NITRO_SHUTDOWN_DISABLED` | `false` | Disable graceful shutdown |
+| `NITRO_SHUTDOWN_SIGNALS` | `SIGINT SIGTERM` | Signals that trigger shutdown |
+| `NITRO_SHUTDOWN_TIMEOUT` | `30000` | Milliseconds before forced shutdown |
+| `NITRO_SHUTDOWN_FORCE` | `true` | Call `process.exit()` at end of shutdown |
+
+<Note>
+Use a reverse proxy such as nginx or Cloudflare in front of Nitro for SSL termination rather than configuring `NITRO_SSL_CERT` and `NITRO_SSL_KEY` directly.
+</Note>
+
+### node_cluster
+
+**Preset:** `node_cluster`
+
+Spawns one worker process per CPU core to take advantage of multi-core systems.
+
+```bash
+NITRO_PRESET=node_cluster nitro build
+node .output/server/index.mjs
+```
+
+#### Additional environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NITRO_CLUSTER_WORKERS` | Number of CPU cores | Number of worker processes to spawn |
+
+### node_middleware
+
+**Preset:** `node_middleware`
+
+Exports a raw Node.js request listener instead of starting a server. Use this to embed Nitro inside an existing HTTP server.
+
+```bash
+NITRO_PRESET=node_middleware nitro build
+```
+
+```javascript
+import { createServer } from "node:http";
+import { listener } from "./.output/server";
+
+const server = createServer(listener);
+server.listen(8080);
+```
+
+  </Tab>
+  <Tab title="Bun">
+
+## Bun
+
+**Preset:** `bun`
+
+Nitro output is compatible with the [Bun](https://bun.sh) runtime. Using the `bun` preset instead of the default Node.js preset enables Bun-specific optimizations.
+
+### Build and start
+
+```bash
+NITRO_PRESET=bun nitro build
+bun run ./.output/server/index.mjs
+```
+
+Or set the preset in your config:
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  preset: "bun",
+});
+```
+
+Then build and run:
+
+```bash
+nitro build
+bun run ./.output/server/index.mjs
+```
+
+<Note>
+If you deploy to a managed provider that supports Bun (such as Vercel), use the provider's own preset and configure the Bun runtime through the provider's settings rather than the `bun` preset.
+</Note>
+
+  </Tab>
+  <Tab title="Deno">
+
+## Deno
+
+**Preset:** `deno_server`
+
+Build your Nitro application with Node.js, then run the output inside the [Deno](https://deno.com) runtime.
+
+### Build and start
+
+```bash
+NITRO_PRESET=deno_server nitro build
+deno run --unstable --allow-net --allow-read --allow-env .output/server/index.ts
+```
+
+Or set the preset in your config:
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  preset: "deno_server",
+});
+```
+
+Then build and run:
+
+```bash
+nitro build
+deno run --unstable --allow-net --allow-read --allow-env .output/server/index.ts
+```
+
+<Note>
+For deploying to the managed Deno Deploy platform, use the `deno_deploy` preset instead. See the [Deno provider page](/deploy/providers/deno) for details.
+</Note>
+
+  </Tab>
+</Tabs>

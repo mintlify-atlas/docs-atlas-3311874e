@@ -1,0 +1,1485 @@
+---
+title: "Configuration reference"
+description: "Complete reference for all Nitro configuration options, grouped by category."
+keywords: ["nitro", "config", "configuration", "nitro.config.ts", "options", "reference"]
+---
+
+Nitro is configured through a `nitro.config.ts` file at the root of your project, or through the `nitro` key when using Vite.
+
+<CodeGroup>
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  // your options here
+});
+```
+
+```typescript vite.config.ts
+import { defineConfig } from "vite";
+import { nitro } from "nitro/vite";
+
+export default defineConfig({
+  plugins: [nitro()],
+  nitro: {
+    // your options here
+  },
+});
+```
+
+</CodeGroup>
+
+<Note>
+Nitro loads configuration using [c12](https://github.com/unjs/c12), which also supports `.nitrorc` files in your project directory or home directory, and a `nitro` key in `package.json`.
+</Note>
+
+## Environment-specific config
+
+Use `$development` and `$production` keys to apply options only in specific environments:
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  logLevel: 3,
+  $development: {
+    debug: true,
+  },
+  $production: {
+    minify: true,
+  },
+});
+```
+
+## Extending configs
+
+Use `extends` to compose from a base config:
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  extends: "./base.config",
+});
+```
+
+---
+
+## Paths and directories
+
+<ParamField path="rootDir" type="string" default=". (current directory)">
+  Project main directory. Nitro resolves all other paths relative to this directory.
+
+  ```typescript
+  export default defineNitroConfig({
+    rootDir: "./src/server",
+  });
+  ```
+</ParamField>
+
+<ParamField path="workspaceDir" type="string">
+  Project workspace root directory. Automatically detected (e.g. from pnpm workspace) when not set. Useful in monorepo setups.
+
+  ```typescript
+  export default defineNitroConfig({
+    workspaceDir: "../",
+  });
+  ```
+</ParamField>
+
+<ParamField path="serverDir" type="boolean | './' | './server' | string" default="false">
+  Server source directory. When set, Nitro scans this directory for `api/`, `routes/`, `plugins/`, `utils/`, `middleware/`, `assets/`, and `tasks/` subdirectories.
+
+  - `false` — scanning disabled
+  - `"./"` — use the root directory
+  - `"./server"` — use a `server/` subdirectory
+
+  ```typescript
+  export default defineNitroConfig({
+    serverDir: "./server",
+  });
+  ```
+
+  <Warning>
+    The `srcDir` option is deprecated. Use `serverDir` instead.
+  </Warning>
+</ParamField>
+
+<ParamField path="scanDirs" type="string[]" default="[]">
+  Additional directories to scan and auto-register files such as API routes. When empty, falls back to the source directory.
+
+  ```typescript
+  export default defineNitroConfig({
+    scanDirs: ["./modules/auth/api", "./modules/billing/api"],
+  });
+  ```
+</ParamField>
+
+<ParamField path="apiDir" type="string" default="api">
+  Directory name inside each scan dir to look for API route handlers.
+
+  ```typescript
+  export default defineNitroConfig({
+    apiDir: "endpoints",
+  });
+  ```
+</ParamField>
+
+<ParamField path="routesDir" type="string" default="routes">
+  Directory name inside each scan dir to look for route handlers.
+
+  ```typescript
+  export default defineNitroConfig({
+    routesDir: "pages",
+  });
+  ```
+</ParamField>
+
+<ParamField path="buildDir" type="string" default="node_modules/.nitro">
+  Nitro's temporary working directory for generating build-related files.
+
+  ```typescript
+  export default defineNitroConfig({
+    buildDir: ".nitro",
+  });
+  ```
+</ParamField>
+
+<ParamField path="output" type="object">
+  Output directory configuration for the production bundle.
+
+  <Expandable title="properties">
+    <ParamField path="output.dir" type="string" default=".output">
+      Root output directory.
+    </ParamField>
+    <ParamField path="output.serverDir" type="string" default=".output/server">
+      Server bundle output directory.
+    </ParamField>
+    <ParamField path="output.publicDir" type="string" default=".output/public">
+      Static assets output directory.
+    </ParamField>
+  </Expandable>
+
+  ```typescript
+  export default defineNitroConfig({
+    output: {
+      dir: "dist",
+      serverDir: "dist/server",
+      publicDir: "dist/public",
+    },
+  });
+  ```
+</ParamField>
+
+---
+
+## Server
+
+<ParamField path="preset" type="string">
+  Deployment preset to use for production builds. Can also be set with the `NITRO_PRESET` environment variable. Automatically detected when running in known environments.
+
+  Preset for development is always `nitro_dev`. The default production preset is `node_server`.
+
+  ```typescript
+  export default defineNitroConfig({
+    preset: "cloudflare_pages",
+  });
+  ```
+
+  See [Deploy](/deploy/index) for all available presets.
+</ParamField>
+
+<ParamField path="compatibilityDate" type="string" default="latest">
+  Date string in `YYYY-MM-DD` format to opt into preset features introduced on or before that date. Set to the latest tested date to use all current features.
+
+  Can also be set with the `NITRO_COMPATIBILITY_DATE` environment variable.
+
+  ```typescript
+  export default defineNitroConfig({
+    compatibilityDate: "2025-01-01",
+  });
+  ```
+</ParamField>
+
+<ParamField path="baseURL" type="string" default="/">
+  Server's main base URL. Can also be set with the `NITRO_APP_BASE_URL` environment variable.
+
+  ```typescript
+  export default defineNitroConfig({
+    baseURL: "/app/",
+  });
+  ```
+</ParamField>
+
+<ParamField path="apiBaseURL" type="string" default="/api">
+  Base URL prefix for API routes scanned from the `api/` directory.
+
+  ```typescript
+  export default defineNitroConfig({
+    apiBaseURL: "/server/api",
+  });
+  ```
+</ParamField>
+
+<ParamField path="logLevel" type="number" default="3">
+  Log verbosity level. Defaults to `1` when a testing environment is detected. See [consola log levels](https://github.com/unjs/consola?tab=readme-ov-file#log-level) for available values.
+
+  ```typescript
+  export default defineNitroConfig({
+    logLevel: 4, // verbose
+  });
+  ```
+</ParamField>
+
+<ParamField path="debug" type="boolean" default="false">
+  Enable debug mode for verbose logging and additional development information. Defaults to `true` when the `DEBUG` environment variable is set.
+
+  ```typescript
+  export default defineNitroConfig({
+    debug: true,
+  });
+  ```
+</ParamField>
+
+<ParamField path="static" type="boolean" default="false">
+  Enable static site generation mode. When `true`, Nitro prerenders all routes.
+
+  ```typescript
+  export default defineNitroConfig({
+    static: true,
+  });
+  ```
+</ParamField>
+
+<ParamField path="renderer" type="false | object">
+  Points to the main render entry. The file must export an event handler as its default export. See [Renderer](/renderer) for details.
+
+  <Expandable title="properties">
+    <ParamField path="renderer.handler" type="string">
+      Path to the render handler file.
+    </ParamField>
+    <ParamField path="renderer.static" type="boolean">
+      Treat the renderer as static.
+    </ParamField>
+    <ParamField path="renderer.template" type="string">
+      Path to an HTML template.
+    </ParamField>
+  </Expandable>
+
+  ```typescript
+  export default defineNitroConfig({
+    renderer: {
+      handler: "~/renderer",
+    },
+  });
+  ```
+</ParamField>
+
+<ParamField path="serveStatic" type="boolean | 'node' | 'deno' | 'inline'">
+  Serve the `public/` directory in production. Default behavior depends on the deployment preset.
+
+  <Note>
+    It is recommended to let your edge CDN (Nginx, Apache, cloud) serve the `.output/public/` directory instead to benefit from compression and higher-level caching.
+  </Note>
+
+  ```typescript
+  export default defineNitroConfig({
+    serveStatic: "node",
+  });
+  ```
+</ParamField>
+
+<ParamField path="noPublicDir" type="boolean" default="false">
+  Disable creation of the `.output/public` directory. Skips copying the `public/` directory and disables pre-rendering.
+
+  ```typescript
+  export default defineNitroConfig({
+    noPublicDir: true,
+  });
+  ```
+</ParamField>
+
+---
+
+## TypeScript
+
+<ParamField path="typescript" type="object">
+  TypeScript configuration for generated types.
+
+  <Expandable title="properties">
+    <ParamField path="typescript.strict" type="boolean" default="true">
+      Enable strict mode in the generated `tsconfig.json`.
+    </ParamField>
+    <ParamField path="typescript.generateRuntimeConfigTypes" type="boolean" default="false">
+      Generate types for `useRuntimeConfig()` based on your `runtimeConfig` definition.
+    </ParamField>
+    <ParamField path="typescript.generateTsConfig" type="boolean" default="false">
+      Write a `tsconfig.json` to the `generatedTypesDir` directory.
+    </ParamField>
+    <ParamField path="typescript.tsConfig" type="object">
+      Additional fields merged into the generated `tsconfig.json`.
+    </ParamField>
+    <ParamField path="typescript.generatedTypesDir" type="string" default="node_modules/.nitro/types">
+      Directory where generated type files are written.
+    </ParamField>
+    <ParamField path="typescript.tsconfigPath" type="string" default="tsconfig.json">
+      Path of the generated `tsconfig.json` relative to `generatedTypesDir`.
+    </ParamField>
+  </Expandable>
+
+  ```typescript
+  export default defineNitroConfig({
+    typescript: {
+      strict: true,
+      generateTsConfig: true,
+      generateRuntimeConfigTypes: true,
+    },
+  });
+  ```
+</ParamField>
+
+---
+
+## Imports and auto-imports
+
+<ParamField path="imports" type="Partial<UnimportPluginOptions> | false" default="false">
+  Auto-import configuration. Set to an object to enable auto-imports. Powered by [unimport](https://github.com/unjs/unimport).
+
+  <Expandable title="properties">
+    <ParamField path="imports.dirs" type="string[]">
+      Additional directories to scan for auto-importable exports.
+    </ParamField>
+    <ParamField path="imports.imports" type="array">
+      Explicit list of named imports to auto-register.
+    </ParamField>
+    <ParamField path="imports.presets" type="array">
+      Preset packages whose exports are auto-imported.
+    </ParamField>
+  </Expandable>
+
+  ```typescript
+  export default defineNitroConfig({
+    imports: {
+      dirs: ["./utils"],
+    },
+  });
+  ```
+</ParamField>
+
+<ParamField path="virtual" type="Record<string, string | () => string | Promise<string>>" default="{}">
+  Map of virtual module names to their contents or a function that returns content. Useful for injecting build-time constants.
+
+  ```typescript
+  export default defineNitroConfig({
+    virtual: {
+      "#config": `export default { version: "1.0.0" }`,
+    },
+  });
+  ```
+</ParamField>
+
+---
+
+## Runtime config
+
+<ParamField path="runtimeConfig" type="object" default="{ app: {}, nitro: {} }">
+  Server runtime configuration. Values defined here are available at runtime via `useRuntimeConfig()` and can be overridden using environment variables prefixed with `NITRO_`.
+
+  <Note>
+    The `nitro` namespace is reserved for internal Nitro configuration.
+  </Note>
+
+  ```typescript
+  export default defineNitroConfig({
+    runtimeConfig: {
+      apiSecret: "default-secret", // override with NITRO_API_SECRET
+      database: {
+        host: "localhost",       // override with NITRO_DATABASE_HOST
+        port: 5432,              // override with NITRO_DATABASE_PORT
+      },
+    },
+  });
+  ```
+
+  Access in route handlers:
+
+  ```typescript
+  import { useRuntimeConfig } from "nitro/runtime-config";
+
+  export default defineHandler((event) => {
+    const { apiSecret } = useRuntimeConfig();
+    return apiSecret;
+  });
+  ```
+
+  **Environment variable mapping**
+
+  Keys are mapped to environment variables using the `NITRO_` prefix and `UPPER_SNAKE_CASE` conversion. Nested keys are joined with underscores:
+
+  | Config key | Environment variable |
+  |---|---|
+  | `apiSecret` | `NITRO_API_SECRET` |
+  | `database.host` | `NITRO_DATABASE_HOST` |
+  | `helloWorld` | `NITRO_HELLO_WORLD` |
+
+  <Note>
+    Only keys defined in `runtimeConfig` in your config file can be overridden. You cannot introduce new keys via environment variables alone.
+  </Note>
+
+  **Custom env prefix**
+
+  Configure a secondary environment variable prefix using the reserved `nitro.envPrefix` key:
+
+  ```typescript
+  export default defineNitroConfig({
+    runtimeConfig: {
+      nitro: {
+        envPrefix: "APP_",
+      },
+      apiToken: "",
+    },
+  });
+  ```
+
+  With this configuration, both `NITRO_API_TOKEN` and `APP_API_TOKEN` are checked as overrides.
+</ParamField>
+
+---
+
+## Routing
+
+<ParamField path="handlers" type="NitroEventHandler[]" default="[]">
+  Explicit server route handler definitions. Directories such as `routes/`, `api/`, and `middleware/` inside the server directory are automatically registered — use this option to add handlers from other locations or with explicit options.
+
+  <Expandable title="handler properties">
+    <ParamField path="handlers[].route" type="string">
+      URL pattern for this handler (supports wildcards and params).
+    </ParamField>
+    <ParamField path="handlers[].handler" type="string">
+      Path to the handler file.
+    </ParamField>
+    <ParamField path="handlers[].method" type="string">
+      HTTP method to match (`get`, `post`, `put`, `delete`, etc.).
+    </ParamField>
+    <ParamField path="handlers[].middleware" type="boolean">
+      When `true`, the handler runs as middleware for all matching requests.
+    </ParamField>
+  </Expandable>
+
+  ```typescript
+  export default defineNitroConfig({
+    handlers: [
+      { route: "/health", handler: "./handlers/health.ts" },
+      { route: "/admin/**", handler: "./handlers/admin.ts", method: "get" },
+    ],
+  });
+  ```
+</ParamField>
+
+<ParamField path="devHandlers" type="NitroDevEventHandler[]" default="[]">
+  Development-only handlers that accept handler instances directly. These are not available in production builds.
+
+  ```typescript
+  export default defineNitroConfig({
+    devHandlers: [
+      { route: "/__dev", handler: eventHandler(() => "dev-only route") },
+    ],
+  });
+  ```
+</ParamField>
+
+<ParamField path="routes" type="Record<string, string | object>" default="{}">
+  Inline route definitions as a map from route pattern to handler path or handler options.
+
+  ```typescript
+  export default defineNitroConfig({
+    routes: {
+      "/hello": "./routes/hello.ts",
+      "/greet": { handler: "./routes/greet.ts", method: "post" },
+    },
+  });
+  ```
+</ParamField>
+
+<ParamField path="routeRules" type="Record<string, NitroRouteConfig>" default="{}">
+  Per-route rule configuration. Keys are route patterns following [rou3](https://github.com/h3js/rou3) syntax. See the [Cache](/cache) docs for all cache options.
+
+  <Expandable title="rule properties">
+    <ParamField path="routeRules[].cache" type="object | false">
+      Cache options. Handlers matching this pattern are wrapped with `defineCachedEventHandler`.
+    </ParamField>
+    <ParamField path="routeRules[].swr" type="boolean | number">
+      Shortcut for `cache: { swr: true, maxAge: number }`.
+    </ParamField>
+    <ParamField path="routeRules[].static" type="boolean | number">
+      Cache permanently (static).
+    </ParamField>
+    <ParamField path="routeRules[].headers" type="Record<string, string>">
+      Response headers to set for matching routes.
+    </ParamField>
+    <ParamField path="routeRules[].redirect" type="string | object">
+      Redirect to another URL. Use a string for a `307` redirect, or an object with `to` and `statusCode`.
+    </ParamField>
+    <ParamField path="routeRules[].proxy" type="string | object">
+      Proxy requests to another URL.
+    </ParamField>
+    <ParamField path="routeRules[].cors" type="boolean">
+      Enable CORS for matching routes.
+    </ParamField>
+    <ParamField path="routeRules[].basicAuth" type="object | false">
+      Require HTTP Basic Auth. Provide `username`, `password`, and optional `realm`.
+    </ParamField>
+    <ParamField path="routeRules[].isr" type="number | boolean | object">
+      Enable Incremental Static Regeneration (ISR). Supported by Vercel and Netlify presets.
+    </ParamField>
+    <ParamField path="routeRules[].prerender" type="boolean">
+      Prerender this route during build.
+    </ParamField>
+  </Expandable>
+
+  ```typescript
+  export default defineNitroConfig({
+    routeRules: {
+      "/blog/**": { swr: 600 },
+      "/assets/**": { headers: { "cache-control": "s-maxage=0" } },
+      "/api/v1/**": { cors: true, headers: { "access-control-allow-methods": "GET" } },
+      "/old-page": { redirect: "/new-page" },
+      "/old-page2": { redirect: { to: "/new-page2", statusCode: 301 } },
+      "/proxy/example": { proxy: "https://example.com" },
+      "/admin/**": { basicAuth: { username: "admin", password: "secret" } },
+    },
+  });
+  ```
+</ParamField>
+
+<ParamField path="errorHandler" type="string | string[]">
+  Path(s) to custom runtime error handler(s). Replaces Nitro's built-in error page.
+
+  ```typescript
+  // nitro.config.ts
+  export default defineNitroConfig({
+    errorHandler: "~/error",
+  });
+  ```
+
+  ```typescript
+  // error.ts
+  export default defineNitroErrorHandler((error, event) => {
+    return new Response("[custom error] " + error.stack, {
+      headers: { "Content-Type": "text/plain" },
+    });
+  });
+  ```
+</ParamField>
+
+<ParamField path="ignore" type="string[]" default="[]">
+  Glob patterns to exclude when scanning directories for route handlers, plugins, and other auto-registered files.
+
+  ```typescript
+  export default defineNitroConfig({
+    ignore: ["routes/_legacy/**"],
+  });
+  ```
+</ParamField>
+
+---
+
+## Assets
+
+### Public assets
+
+<ParamField path="publicAssets" type="PublicAssetDir[]" default="[]">
+  Public asset directories to serve in development and bundle in production. Nitro automatically includes a `public/` directory if one exists.
+
+  <Expandable title="properties">
+    <ParamField path="publicAssets[].dir" type="string" required>
+      Path to the directory on the file system.
+    </ParamField>
+    <ParamField path="publicAssets[].baseURL" type="string">
+      URL prefix under which assets are served. Defaults to root `/`.
+    </ParamField>
+    <ParamField path="publicAssets[].maxAge" type="number">
+      `max-age` value (in seconds) for the `Cache-Control` header.
+    </ParamField>
+    <ParamField path="publicAssets[].fallthrough" type="boolean">
+      Pass to the next handler when the asset is not found instead of returning 404.
+    </ParamField>
+    <ParamField path="publicAssets[].ignore" type="false | string[]">
+      Override glob patterns to ignore when scanning this directory. Set to `false` to disable ignore patterns entirely.
+    </ParamField>
+  </Expandable>
+
+  ```typescript
+  export default defineNitroConfig({
+    publicAssets: [
+      {
+        baseURL: "images",
+        dir: "public/images",
+        maxAge: 60 * 60 * 24 * 7, // 7 days
+      },
+    ],
+  });
+  ```
+
+  The example above generates the following header for assets in `public/images/`:
+  ```
+  cache-control: public, max-age=604800, immutable
+  ```
+</ParamField>
+
+<ParamField path="compressPublicAssets" type="boolean | CompressOptions" default="false">
+  Pre-compress public assets and prerendered routes larger than 1 KB. Generates `.gz`, `.br`, and/or `.zst` sidecar files so your server can serve compressed responses with zero runtime overhead.
+
+  <Expandable title="properties">
+    <ParamField path="compressPublicAssets.gzip" type="boolean" default="false">
+      Generate gzip-compressed versions.
+    </ParamField>
+    <ParamField path="compressPublicAssets.brotli" type="boolean" default="false">
+      Generate brotli-compressed versions.
+    </ParamField>
+    <ParamField path="compressPublicAssets.zstd" type="boolean" default="false">
+      Generate zstd-compressed versions.
+    </ParamField>
+  </Expandable>
+
+  ```typescript
+  export default defineNitroConfig({
+    compressPublicAssets: {
+      gzip: true,
+      brotli: true,
+    },
+  });
+  ```
+</ParamField>
+
+### Server assets
+
+<ParamField path="serverAssets" type="ServerAssetDir[]" default="[]">
+  Asset directories accessible in server logic and bundled in production. See [Assets](/assets) for details.
+
+  <Expandable title="properties">
+    <ParamField path="serverAssets[].baseName" type="string" required>
+      Name used to access this asset group at runtime (e.g. `useStorage("assets:templates")`).
+    </ParamField>
+    <ParamField path="serverAssets[].dir" type="string" required>
+      Path to the directory on the file system.
+    </ParamField>
+    <ParamField path="serverAssets[].pattern" type="string">
+      Glob pattern to filter which files are included. Defaults to all files.
+    </ParamField>
+    <ParamField path="serverAssets[].ignore" type="string[]">
+      Glob patterns to exclude files.
+    </ParamField>
+  </Expandable>
+
+  ```typescript
+  export default defineNitroConfig({
+    serverAssets: [
+      {
+        baseName: "templates",
+        dir: "./templates",
+      },
+    ],
+  });
+  ```
+</ParamField>
+
+---
+
+## Build
+
+<ParamField path="builder" type="'rollup' | 'rolldown' | 'vite'">
+  Bundler to use for building. Auto-detected when not set.
+
+  ```typescript
+  export default defineNitroConfig({
+    builder: "vite",
+  });
+  ```
+</ParamField>
+
+<ParamField path="minify" type="boolean" default="false">
+  Minify the production bundle.
+
+  ```typescript
+  export default defineNitroConfig({
+    minify: true,
+  });
+  ```
+</ParamField>
+
+<ParamField path="sourcemap" type="boolean" default="false">
+  Enable source map generation. See [Rollup sourcemap options](https://rollupjs.org/configuration-options/#output-sourcemap).
+
+  ```typescript
+  export default defineNitroConfig({
+    sourcemap: true,
+  });
+  ```
+</ParamField>
+
+<ParamField path="inlineDynamicImports" type="boolean" default="false">
+  Bundle all code into a single output file instead of creating separate chunks per route. Some presets enable this by default.
+
+  ```typescript
+  export default defineNitroConfig({
+    inlineDynamicImports: true,
+  });
+  ```
+</ParamField>
+
+<ParamField path="node" type="boolean" default="true">
+  Specify whether the build targets Node.js. When `false`, Nitro mocks Node.js built-ins using [unenv](https://github.com/unjs/unenv) and adjusts its behavior for edge/worker runtimes.
+
+  ```typescript
+  export default defineNitroConfig({
+    node: false,
+  });
+  ```
+</ParamField>
+
+<ParamField path="rollupConfig" type="Partial<RollupConfig>">
+  Additional configuration merged into the Rollup build config.
+
+  ```typescript
+  export default defineNitroConfig({
+    rollupConfig: {
+      output: { manualChunks: { vendor: ["lodash-es"] } },
+    },
+  });
+  ```
+</ParamField>
+
+<ParamField path="rolldownConfig" type="Partial<RolldownConfig>">
+  Additional configuration merged into the Rolldown build config.
+
+  ```typescript
+  export default defineNitroConfig({
+    rolldownConfig: {
+      output: { banner: "/* built with nitro */" },
+    },
+  });
+  ```
+</ParamField>
+
+<ParamField path="oxc" type="OXCOptions">
+  OXC transformer/minifier options for Rolldown builds.
+
+  <Expandable title="properties">
+    <ParamField path="oxc.minify" type="object">
+      Minification options (`compress`, `mangle`, etc.).
+    </ParamField>
+    <ParamField path="oxc.transform" type="object">
+      Transform options passed to the OXC transformer.
+    </ParamField>
+  </Expandable>
+
+  ```typescript
+  export default defineNitroConfig({
+    oxc: {
+      minify: { compress: true, mangle: true },
+    },
+  });
+  ```
+</ParamField>
+
+<ParamField path="noExternals" type="boolean | (string | RegExp)[]" default="false">
+  Prevent packages from being externalized. Set to `true` to bundle all dependencies, or provide an array of package name patterns to bundle selectively.
+
+  ```typescript
+  export default defineNitroConfig({
+    noExternals: true,
+  });
+  ```
+</ParamField>
+
+<ParamField path="traceDeps" type="(string | RegExp)[]" default="[]">
+  Additional dependencies to trace and include in the build output. Supports special prefixes:
+
+  - `!pkg` — exclude a package from tracing
+  - `pkg*` — full trace (copies all package files instead of only traced ones)
+
+  ```typescript
+  export default defineNitroConfig({
+    traceDeps: [
+      "sharp",
+      "better-sqlite3",
+      "my-pkg*",   // full trace
+      "!unwanted", // exclude
+    ],
+  });
+  ```
+</ParamField>
+
+<ParamField path="traceOpts" type="object">
+  Advanced options for dependency tracing via [nf3](https://github.com/nicolo-ribaudo/nf3).
+
+  <Expandable title="properties">
+    <ParamField path="traceOpts.nft" type="object">
+      Options passed to `@vercel/nft` for file tracing.
+    </ParamField>
+    <ParamField path="traceOpts.traceAlias" type="Record<string, string>">
+      Module path aliases applied during tracing.
+    </ParamField>
+    <ParamField path="traceOpts.chmod" type="boolean | number">
+      Preserve or set file permissions when copying. Pass `true` to preserve, or an octal value such as `0o755`.
+    </ParamField>
+    <ParamField path="traceOpts.transform" type="array">
+      Transform traced files before copying. Each entry has `filter` (function) and `handler` (transform function).
+    </ParamField>
+    <ParamField path="traceOpts.hooks" type="object">
+      Lifecycle hooks for the tracing process.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="alias" type="Record<string, string>" default="{}">
+  Module path aliases for the bundler.
+
+  ```typescript
+  export default defineNitroConfig({
+    alias: {
+      "~utils": "./src/utils",
+      "#shared": "./shared",
+    },
+  });
+  ```
+</ParamField>
+
+<ParamField path="replace" type="Record<string, string | (id: string) => string>" default="{}">
+  Build-time string replacements applied by the bundler.
+
+  ```typescript
+  export default defineNitroConfig({
+    replace: {
+      "process.env.APP_VERSION": JSON.stringify("1.0.0"),
+    },
+  });
+  ```
+</ParamField>
+
+<ParamField path="exportConditions" type="string[]">
+  Custom export conditions for package.json `exports` field resolution.
+
+  ```typescript
+  export default defineNitroConfig({
+    exportConditions: ["worker", "production"],
+  });
+  ```
+</ParamField>
+
+<ParamField path="commonJS" type="object">
+  Additional configuration for the Rollup [`@rollup/plugin-commonjs`](https://github.com/rollup/plugins/tree/master/packages/commonjs) plugin.
+
+  ```typescript
+  export default defineNitroConfig({
+    commonJS: {
+      requireReturnsDefault: "auto",
+    },
+  });
+  ```
+</ParamField>
+
+<ParamField path="unenv" type="UnenvPreset | UnenvPreset[]">
+  [unenv](https://github.com/unjs/unenv/) preset(s) for environment compatibility shims.
+
+  ```typescript
+  export default defineNitroConfig({
+    unenv: {
+      alias: { "my-module": "my-module/web" },
+    },
+  });
+  ```
+</ParamField>
+
+<ParamField path="entry" type="string">
+  Custom bundler entry point, overriding the preset default.
+
+  ```typescript
+  export default defineNitroConfig({
+    entry: "./server/entry.ts",
+  });
+  ```
+</ParamField>
+
+---
+
+## Storage and cache
+
+<ParamField path="storage" type="StorageMounts" default="{}">
+  Storage driver mounts for production. Keys are mount point names; values are driver configurations. See [Storage](/storage) for details.
+
+  ```typescript
+  export default defineNitroConfig({
+    storage: {
+      redis: {
+        driver: "redis",
+        url: "redis://localhost:6379",
+      },
+      db: {
+        driver: "fs",
+        base: "./data",
+      },
+    },
+  });
+  ```
+</ParamField>
+
+<ParamField path="devStorage" type="StorageMounts" default="{}">
+  Storage driver overrides applied only in development mode. Use this to swap production drivers for local alternatives during development.
+
+  ```typescript
+  export default defineNitroConfig({
+    devStorage: {
+      redis: {
+        driver: "fs",
+        base: "./data/redis",
+      },
+    },
+  });
+  ```
+</ParamField>
+
+---
+
+## Database
+
+<Warning>
+  Database support requires `experimental.database: true`.
+</Warning>
+
+<ParamField path="database" type="Record<string, DatabaseConnectionConfig>" default="{}">
+  Database connection configurations. See [Database](/database) for details.
+
+  <Expandable title="connection properties">
+    <ParamField path="database[name].connector" type="string" required>
+      Database connector name (e.g. `"sqlite"`, `"postgresql"`, `"mysql"`). See [db0](https://db0.unjs.io) for available connectors.
+    </ParamField>
+    <ParamField path="database[name].options" type="object">
+      Connector-specific options (e.g. file name, connection string).
+    </ParamField>
+  </Expandable>
+
+  ```typescript
+  export default defineNitroConfig({
+    database: {
+      default: {
+        connector: "sqlite",
+        options: { name: "db" },
+      },
+      analytics: {
+        connector: "postgresql",
+        options: { url: process.env.DATABASE_URL },
+      },
+    },
+  });
+  ```
+</ParamField>
+
+<ParamField path="devDatabase" type="Record<string, DatabaseConnectionConfig>" default="{}">
+  Database connection overrides for development mode.
+
+  ```typescript
+  export default defineNitroConfig({
+    devDatabase: {
+      default: {
+        connector: "sqlite",
+        options: { name: "db-dev" },
+      },
+    },
+  });
+  ```
+</ParamField>
+
+---
+
+## Experimental
+
+<Warning>
+  Experimental features may change or be removed in future versions. Use with caution.
+</Warning>
+
+<ParamField path="experimental" type="object" default="{}">
+  Enable experimental Nitro features.
+
+  <Expandable title="properties">
+    <ParamField path="experimental.tasks" type="boolean">
+      Enable the [Tasks](/tasks) API for defining and running background tasks.
+    </ParamField>
+    <ParamField path="experimental.database" type="boolean">
+      Enable the [Database](/database) API.
+    </ParamField>
+    <ParamField path="experimental.openAPI" type="boolean">
+      Enable `/_scalar`, `/_swagger`, and `/_openapi.json` endpoints. Prefer the top-level [`openAPI`](#openapi) option for configuration.
+    </ParamField>
+    <ParamField path="experimental.asyncContext" type="boolean">
+      Enable native async context support for `useRequest()`.
+    </ParamField>
+    <ParamField path="experimental.typescriptBundlerResolution" type="boolean">
+      Enable TypeScript bundler module resolution mode. See [TypeScript#51669](https://github.com/microsoft/TypeScript/pull/51669).
+    </ParamField>
+    <ParamField path="experimental.envExpansion" type="boolean">
+      Allow `{{VAR_NAME}}` syntax in runtime config string values to be expanded from environment variables at runtime.
+    </ParamField>
+    <ParamField path="experimental.sourcemapMinify" type="false">
+      Set to `false` to disable experimental sourcemap minification.
+    </ParamField>
+    <ParamField path="experimental.websocket" type="boolean" deprecated>
+      Enable WebSocket support. Deprecated — use `features.websocket` instead.
+    </ParamField>
+  </Expandable>
+
+  ```typescript
+  export default defineNitroConfig({
+    experimental: {
+      tasks: true,
+      database: true,
+      asyncContext: true,
+      envExpansion: true,
+    },
+  });
+  ```
+</ParamField>
+
+---
+
+## Features
+
+<ParamField path="features" type="object" default="{}">
+  Enable built-in Nitro features.
+
+  <Expandable title="properties">
+    <ParamField path="features.runtimeHooks" type="boolean">
+      Enable runtime hooks for request and response. Auto-enabled when at least one plugin is present.
+    </ParamField>
+    <ParamField path="features.websocket" type="boolean" default="false">
+      Enable WebSocket support.
+    </ParamField>
+  </Expandable>
+
+  ```typescript
+  export default defineNitroConfig({
+    features: {
+      runtimeHooks: true,
+      websocket: true,
+    },
+  });
+  ```
+</ParamField>
+
+---
+
+## Prerender
+
+<ParamField path="prerender" type="object">
+  Configuration for static pre-rendering of routes.
+
+  <Expandable title="properties" defaultOpen={true}>
+    <ParamField path="prerender.routes" type="string[]" default="[]">
+      Routes to prerender. Nitro fetches these during the build and writes them to `.output/public/`.
+    </ParamField>
+    <ParamField path="prerender.crawlLinks" type="boolean" default="false">
+      Automatically crawl `<a>` tags in prerendered HTML pages to discover and prerender additional routes. Starts from `/` when `routes` is empty.
+    </ParamField>
+    <ParamField path="prerender.ignore" type="Array<string | RegExp | (path: string) => boolean | null | undefined>" default="[]">
+      Routes matching any of these patterns are excluded from prerendering.
+    </ParamField>
+    <ParamField path="prerender.failOnError" type="boolean" default="false">
+      Abort the build when a route fails to prerender. Useful in CI pipelines.
+    </ParamField>
+    <ParamField path="prerender.autoSubfolderIndex" type="boolean" default="true">
+      Controls how index files are generated. When `true`, `/about` produces `/about/index.html`. When `false`, `/about` produces `/about.html`.
+    </ParamField>
+    <ParamField path="prerender.concurrency" type="number" default="1">
+      Number of routes to prerender in parallel.
+    </ParamField>
+    <ParamField path="prerender.interval" type="number" default="0">
+      Delay in milliseconds between prerendering requests. Useful for avoiding rate limits on external APIs.
+    </ParamField>
+    <ParamField path="prerender.retry" type="number" default="3">
+      Number of times to retry a failed route. Pass `Infinity` to retry indefinitely.
+    </ParamField>
+    <ParamField path="prerender.retryDelay" type="number" default="500">
+      Delay in milliseconds between retry attempts.
+    </ParamField>
+    <ParamField path="prerender.ignoreUnprefixedPublicAssets" type="boolean">
+      Skip prerendering routes that match unprefixed public assets.
+    </ParamField>
+  </Expandable>
+
+  ```typescript
+  export default defineNitroConfig({
+    prerender: {
+      routes: ["/", "/about", "/sitemap.xml"],
+      crawlLinks: true,
+      failOnError: true,
+      concurrency: 4,
+      interval: 100,
+    },
+  });
+  ```
+</ParamField>
+
+---
+
+## Plugins, tasks, and modules
+
+<ParamField path="plugins" type="string[]" default="[]">
+  Paths to Nitro [plugins](/plugins). Plugins are executed in order on first initialization. Nitro also auto-registers files in the `plugins/` directory.
+
+  ```typescript
+  export default defineNitroConfig({
+    plugins: ["~/plugins/my-plugin.ts"],
+  });
+  ```
+</ParamField>
+
+<ParamField path="tasks" type="Record<string, { handler?: string; description?: string }>" default="{}">
+  Task definitions. Each key is a task name. See [Tasks](/tasks) for details.
+
+  <Warning>
+    Requires `experimental.tasks: true`.
+  </Warning>
+
+  ```typescript
+  export default defineNitroConfig({
+    tasks: {
+      "db:migrate": {
+        handler: "./tasks/db-migrate",
+        description: "Run database migrations",
+      },
+    },
+  });
+  ```
+</ParamField>
+
+<ParamField path="scheduledTasks" type="Record<string, string | string[]>" default="{}">
+  Map of cron expressions to task name(s). Runs the listed tasks on the given schedule.
+
+  <Warning>
+    Requires `experimental.tasks: true`.
+  </Warning>
+
+  ```typescript
+  export default defineNitroConfig({
+    scheduledTasks: {
+      "0 * * * *": "cleanup:temp",
+      "*/5 * * * *": ["health:check", "metrics:collect"],
+    },
+  });
+  ```
+</ParamField>
+
+<ParamField path="modules" type="Array<string | NitroModuleInput>" default="[]">
+  Nitro modules to load. A module can be a file path string, an object with a `setup` function, or a plain function receiving the Nitro instance.
+
+  ```typescript
+  export default defineNitroConfig({
+    modules: [
+      "./modules/my-module.ts",
+      (nitro) => {
+        nitro.hooks.hook("compiled", () => {
+          console.log("Build compiled!");
+        });
+      },
+    ],
+  });
+  ```
+</ParamField>
+
+---
+
+## OpenAPI
+
+<ParamField path="openAPI" type="NitroOpenAPIConfig">
+  Top-level OpenAPI configuration. Requires `experimental.openAPI: true` (or set via this option).
+
+  <Expandable title="properties">
+    <ParamField path="openAPI.meta" type="object">
+      OpenAPI specification metadata.
+
+      <Expandable title="properties">
+        <ParamField path="openAPI.meta.title" type="string">
+          API title in the specification.
+        </ParamField>
+        <ParamField path="openAPI.meta.description" type="string">
+          API description.
+        </ParamField>
+        <ParamField path="openAPI.meta.version" type="string">
+          API version string.
+        </ParamField>
+      </Expandable>
+    </ParamField>
+    <ParamField path="openAPI.route" type="string" default="/_openapi.json">
+      URL of the raw OpenAPI JSON endpoint.
+    </ParamField>
+    <ParamField path="openAPI.production" type="'runtime' | 'prerender'">
+      Enable OpenAPI endpoints in production. `"runtime"` supports middleware; `"prerender"` is more efficient because the JSON is static.
+
+      <Warning>
+        Protect your OpenAPI endpoints if you enable them in production.
+      </Warning>
+    </ParamField>
+    <ParamField path="openAPI.ui" type="object">
+      UI configuration for Scalar and Swagger viewers.
+
+      <Expandable title="properties">
+        <ParamField path="openAPI.ui.scalar" type="object">
+          Scalar configuration. Pass any [Scalar config option](https://github.com/scalar/scalar), plus an optional `route` override (default `/_scalar`).
+        </ParamField>
+        <ParamField path="openAPI.ui.swagger" type="object">
+          Swagger UI configuration, including optional `route` override (default `/_swagger`).
+        </ParamField>
+      </Expandable>
+    </ParamField>
+  </Expandable>
+
+  ```typescript
+  export default defineNitroConfig({
+    openAPI: {
+      meta: {
+        title: "My API",
+        description: "API powered by Nitro",
+        version: "1.0",
+      },
+      production: "prerender",
+      route: "/_docs/openapi.json",
+      ui: {
+        scalar: { route: "/_docs/scalar", theme: "purple" },
+        swagger: { route: "/_docs/swagger" },
+      },
+    },
+  });
+  ```
+</ParamField>
+
+---
+
+## Dev server
+
+<ParamField path="devServer" type="object" default="{ watch: [] }">
+  Development server options.
+
+  <Expandable title="properties">
+    <ParamField path="devServer.port" type="number">
+      Port to listen on.
+    </ParamField>
+    <ParamField path="devServer.hostname" type="string">
+      Hostname to bind to.
+    </ParamField>
+    <ParamField path="devServer.watch" type="string[]" default="[]">
+      Additional paths that trigger a dev server reload when changed.
+    </ParamField>
+    <ParamField path="devServer.runner" type="string">
+      Runner to use for the dev server worker.
+    </ParamField>
+  </Expandable>
+
+  ```typescript
+  export default defineNitroConfig({
+    devServer: {
+      port: 3001,
+      watch: ["./server/plugins"],
+    },
+  });
+  ```
+</ParamField>
+
+<ParamField path="devProxy" type="Record<string, string | ProxyServerOptions>" default="{}">
+  Proxy routes for the development server. Requests to matching paths are forwarded to the target. See [httpxy](https://github.com/unjs/httpxy) for all target options.
+
+  ```typescript
+  export default defineNitroConfig({
+    devProxy: {
+      "/proxy/test": "http://localhost:3001",
+      "/proxy/example": { target: "https://example.com", changeOrigin: true },
+    },
+  });
+  ```
+</ParamField>
+
+<ParamField path="watchOptions" type="ChokidarOptions" default="{ ignoreInitial: true }">
+  File watcher options for development mode. See [chokidar](https://github.com/paulmillr/chokidar) for all available options.
+
+  ```typescript
+  export default defineNitroConfig({
+    watchOptions: {
+      ignored: ["**/node_modules/**", "**/dist/**"],
+    },
+  });
+  ```
+</ParamField>
+
+---
+
+## Logging
+
+<ParamField path="logging" type="object" default="{ compressedSizes: true, buildSuccess: true }">
+  Control build output verbosity.
+
+  <Expandable title="properties">
+    <ParamField path="logging.compressedSizes" type="boolean" default="true">
+      Report compressed bundle sizes in the build output.
+    </ParamField>
+    <ParamField path="logging.buildSuccess" type="boolean" default="true">
+      Print a success message when the build completes.
+    </ParamField>
+  </Expandable>
+
+  ```typescript
+  export default defineNitroConfig({
+    logging: {
+      compressedSizes: false,
+      buildSuccess: false,
+    },
+  });
+  ```
+</ParamField>
+
+---
+
+## WASM
+
+<ParamField path="wasm" type="false | UnwasmPluginOptions" default="{}">
+  WebAssembly import support configuration, powered by [unwasm](https://github.com/unjs/unwasm). Set to `false` to disable WASM support.
+
+  ```typescript
+  export default defineNitroConfig({
+    wasm: {}, // enable with defaults
+  });
+  ```
+</ParamField>
+
+---
+
+## Future
+
+<ParamField path="future" type="object" default="{}">
+  Opt into features that are planned for the next major version of Nitro but may cause breaking changes.
+
+  <Expandable title="properties">
+    <ParamField path="future.nativeSWR" type="boolean">
+      Use Nitro's built-in caching layer for SWR on Netlify and Vercel presets instead of falling back to ISR behavior.
+    </ParamField>
+  </Expandable>
+
+  ```typescript
+  export default defineNitroConfig({
+    future: {
+      nativeSWR: true,
+    },
+  });
+  ```
+</ParamField>
+
+---
+
+## Advanced
+
+<ParamField path="hooks" type="NestedHooks<NitroHooks>" default="{}">
+  Build-time Nitro hooks. See [hookable](https://github.com/unjs/hookable) for the hook API.
+
+  <Warning>
+    This is an advanced option. Misconfiguration can break your build.
+  </Warning>
+
+  ```typescript
+  export default defineNitroConfig({
+    hooks: {
+      compiled(nitro) {
+        console.log("Build compiled successfully!");
+      },
+    },
+  });
+  ```
+</ParamField>
+
+<ParamField path="commands" type="object" default="{}">
+  Preview and deploy command hints. Normally set by deployment presets.
+
+  <Warning>
+    This is an advanced option. Misconfiguration can break your build.
+  </Warning>
+
+  <Expandable title="properties">
+    <ParamField path="commands.preview" type="string">
+      Command to run to preview the production build.
+    </ParamField>
+    <ParamField path="commands.deploy" type="string">
+      Command to run to deploy the build.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="devErrorHandler" type="function">
+  Custom error handler for development mode errors.
+
+  <Warning>
+    This is an advanced option. Misconfiguration can break your build.
+  </Warning>
+
+  ```typescript
+  export default defineNitroConfig({
+    devErrorHandler: (error, event) => {
+      return new Response(`Dev error: ${error.message}`, { status: 500 });
+    },
+  });
+  ```
+</ParamField>
+
+<ParamField path="framework" type="NitroFrameworkInfo" default="{ name: 'nitro', version: '<current>' }">
+  Framework information used by presets and build metadata. Typically set by higher-level frameworks such as Nuxt.
+
+  <Expandable title="properties">
+    <ParamField path="framework.name" type="string">
+      Framework name.
+    </ParamField>
+    <ParamField path="framework.version" type="string">
+      Framework version.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+---
+
+## Preset-specific options
+
+Some deployment presets expose their own top-level config keys. Refer to the relevant provider page for full details.
+
+<ParamField path="firebase" type="object">
+  Options for the Firebase Cloud Functions preset. See [Firebase](/deploy/providers/firebase).
+
+  ```typescript
+  export default defineNitroConfig({
+    firebase: {
+      gen: 2,
+      region: "us-central1",
+    },
+  });
+  ```
+</ParamField>
+
+<ParamField path="vercel" type="object">
+  Options for the Vercel preset. See [Vercel](/deploy/providers/vercel).
+
+  ```typescript
+  export default defineNitroConfig({
+    vercel: {
+      config: { runtime: "nodejs20.x" },
+    },
+  });
+  ```
+</ParamField>
+
+<ParamField path="cloudflare" type="object">
+  Options for the Cloudflare preset. See [Cloudflare](/deploy/providers/cloudflare).
+
+  ```typescript
+  export default defineNitroConfig({
+    cloudflare: {
+      wrangler: { compatibility_date: "2025-01-01" },
+    },
+  });
+  ```
+</ParamField>

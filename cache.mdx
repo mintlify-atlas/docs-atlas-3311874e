@@ -1,0 +1,360 @@
+---
+title: "Caching"
+description: "Cache handlers and functions with SWR, route rules, and pluggable storage backends."
+---
+
+Nitro provides a caching system built on top of the storage layer, powered by [ocache](https://github.com/unjs/ocache). You can cache entire route handlers or arbitrary functions, control staleness with stale-while-revalidate (SWR), and store cached data in any unstorage-compatible backend.
+
+## Cached handlers
+
+Use `defineCachedHandler` to wrap an event handler with caching. It accepts the same handler function as `defineHandler` plus a second [options](#options) argument.
+
+```typescript routes/cached.ts
+import { defineCachedHandler } from "nitro/cache";
+
+export default defineCachedHandler((event) => {
+  return "I am cached for an hour";
+}, { maxAge: 60 * 60 });
+```
+
+With the default `swr: true`, the response is cached for `maxAge` seconds. After expiry, a stale value is returned immediately while the cache refreshes in the background. Set `swr: false` to wait for a fresh value instead.
+
+<Warning>
+Request headers are dropped when handling cached responses. Use the [`varies`](#handler-only-options) option to include specific headers in the cache key and preserve them on the request.
+</Warning>
+
+### Automatic HTTP headers
+
+`defineCachedHandler` automatically manages HTTP cache headers on cached responses:
+
+| Header | Behavior |
+|---|---|
+| `etag` | A weak ETag (`W/"..."`) is generated from the response body hash if not already set by the handler. |
+| `last-modified` | Set to the time the response was first cached, if not already set. |
+| `cache-control` | Set based on `swr`, `maxAge`, and `staleMaxAge`. With `swr: true`: `s-maxage=<maxAge>, stale-while-revalidate=<staleMaxAge>`. With `swr: false`: `max-age=<maxAge>`. |
+
+### Conditional requests (304 Not Modified)
+
+Cached handlers automatically support conditional requests. When a client sends `if-none-match` or `if-modified-since` headers that match the cached response, Nitro returns `304 Not Modified` without a body.
+
+### Request method filtering
+
+Only `GET` and `HEAD` requests are cached. All other HTTP methods (`POST`, `PUT`, `DELETE`, etc.) bypass the cache and invoke the handler directly.
+
+### Request deduplication
+
+When multiple concurrent requests hit the same cache key while the cache is being resolved, only one handler invocation runs. All concurrent requests wait for and share the same result.
+
+## Cached functions
+
+Use `defineCachedFunction` to cache the result of any async function. This is useful for caching data fetched inside a handler — for example, an API call shared across multiple routes.
+
+```typescript routes/api/stars/[...repo].ts
+import { defineCachedFunction } from "nitro/cache";
+import { defineHandler, type H3Event } from "nitro";
+
+export default defineHandler(async (event) => {
+  const { repo } = event.context.params;
+  const stars = await cachedGHStars(repo).catch(() => 0);
+
+  return { repo, stars };
+});
+
+const cachedGHStars = defineCachedFunction(async (repo: string) => {
+  const data = await fetch(`https://api.github.com/repos/${repo}`).then(res => res.json());
+
+  return data.stargazers_count;
+}, {
+  maxAge: 60 * 60,
+  name: "ghStars",
+  getKey: (repo: string) => repo,
+});
+```
+
+In development, cached function data is written to `.nitro/cache/functions/ghStars/<owner>/<repo>.json`:
+
+```json
+{"expires":1677851092249,"value":43991,"mtime":1677847492540,"integrity":"ZUHcsxCWEH"}
+```
+
+<Warning>
+Cached function return values are serialized to JSON. Do not return values that cannot be serialized, such as `Symbol`, `Map`, or `Set`.
+</Warning>
+
+### Edge worker considerations
+
+In edge workers, the instance is destroyed after each request. To keep background cache refreshes alive, Nitro uses `event.waitUntil` automatically — but only when the `event` is passed as the first argument.
+
+**Always pass `event` as the first argument when using `defineCachedFunction` in edge workers:**
+
+```typescript routes/api/stars/[...repo].ts
+import { defineCachedFunction } from "nitro/cache";
+import { defineHandler, type H3Event } from "nitro";
+
+export default defineHandler(async (event) => {
+  const { repo } = event.context.params;
+  const stars = await cachedGHStars(event, repo).catch(() => 0);
+
+  return { repo, stars };
+});
+
+const cachedGHStars = defineCachedFunction(async (event: H3Event, repo: string) => {
+  const data = await fetch(`https://api.github.com/repos/${repo}`).then(res => res.json());
+
+  return data.stargazers_count;
+}, {
+  maxAge: 60 * 60,
+  name: "ghStars",
+  getKey: (event: H3Event, repo: string) => repo,
+});
+```
+
+## Route rules
+
+Use `routeRules` in `nitro.config.ts` to apply caching by URL pattern without modifying individual handlers. This is useful for a global cache strategy across a section of your application.
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  routeRules: {
+    "/blog/**": { cache: { maxAge: 60 * 60 } },
+  },
+});
+```
+
+To use a [custom cache storage](#cache-storage) backend, specify the `base` option:
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  storage: {
+    redis: {
+      driver: "redis",
+      url: "redis://localhost:6379",
+    },
+  },
+  routeRules: {
+    "/blog/**": { cache: { maxAge: 60 * 60, base: "redis" } },
+  },
+});
+```
+
+### SWR shortcut
+
+Use the `swr` shorthand on route rules to enable stale-while-revalidate caching quickly:
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  routeRules: {
+    // SWR with default maxAge
+    "/blog/**": { swr: true },
+    // SWR with 1-hour maxAge
+    "/api/**": { swr: 3600 },
+    // Disable caching explicitly
+    "/api/realtime/**": { cache: false },
+  },
+});
+```
+
+<Note>
+When using route rules, cached handlers use the group `'nitro/route-rules'` instead of the default `'nitro/handlers'`.
+</Note>
+
+## Cache storage
+
+Nitro stores cached data in the `cache` storage mount point.
+
+| Environment | Default driver |
+|---|---|
+| Production | In-memory |
+| Development | Filesystem (`.nitro/cache`) |
+
+Override the production cache storage by mounting a driver at the `cache` key:
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  storage: {
+    cache: {
+      driver: "redis",
+      /* redis connector options */
+    },
+  },
+});
+```
+
+Override the development cache storage separately using `devStorage`:
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  storage: {
+    cache: {
+      driver: "redis",
+      /* production cache storage */
+    },
+  },
+  devStorage: {
+    cache: {
+      driver: "fs",
+      base: "./.data/cache",
+    },
+  },
+});
+```
+
+See the [Storage](/storage) guide for the full list of available unstorage drivers.
+
+## Options
+
+### Shared options
+
+These options are available for both `defineCachedHandler` and `defineCachedFunction`.
+
+<ParamField path="options.base" type="string" default="cache">
+  Name of the storage mount point to use for caching.
+</ParamField>
+
+<ParamField path="options.name" type="string">
+  Cache namespace. Guessed from the function name if not provided; falls back to `'_'`.
+</ParamField>
+
+<ParamField path="options.group" type="string">
+  Cache group. Defaults to `'nitro/handlers'` for handlers and `'nitro/functions'` for functions.
+</ParamField>
+
+<ParamField path="options.getKey" type="(...args) => string">
+  A function that accepts the same arguments as the original function and returns a cache key string. If not provided, a built-in hash function generates a key from the arguments. For cached handlers, the key is derived from the request URL path and search params.
+</ParamField>
+
+<ParamField path="options.integrity" type="string">
+  A value that invalidates the cache when changed. Defaults to a hash of the function source code, used in development to detect code changes.
+</ParamField>
+
+<ParamField path="options.maxAge" type="number" default="1">
+  Maximum age that the cached entry is valid, in seconds.
+</ParamField>
+
+<ParamField path="options.staleMaxAge" type="number" default="0">
+  Maximum age that a stale cached entry is valid, in seconds. Set to `-1` to serve stale indefinitely while the cache updates in the background. Defaults to `0` (disabled).
+</ParamField>
+
+<ParamField path="options.swr" type="boolean" default="true">
+  Enable stale-while-revalidate behavior. When enabled, stale values are returned immediately while revalidation happens in the background. When disabled, the caller waits for a fresh value before responding.
+</ParamField>
+
+<ParamField path="options.shouldInvalidateCache" type="(...args) => boolean | Promise<boolean>">
+  A function that returns `true` to invalidate the current cache entry and create a new one.
+</ParamField>
+
+<ParamField path="options.shouldBypassCache" type="(...args) => boolean | Promise<boolean>">
+  A function that returns `true` to bypass the cache without invalidating the existing entry.
+</ParamField>
+
+<ParamField path="options.onError" type="(error: unknown) => void">
+  A custom error handler called when the cached function throws. By default, errors are logged and captured by the Nitro error handler.
+</ParamField>
+
+### Handler-only options
+
+These options are only available for `defineCachedHandler`.
+
+<ParamField path="options.headersOnly" type="boolean">
+  When `true`, skip full response caching and only handle conditional request headers (`if-none-match`, `if-modified-since`) for `304 Not Modified` responses. The handler is called on every request but benefits from conditional caching.
+</ParamField>
+
+<ParamField path="options.varies" type="string[]">
+  An array of request header names to vary the cache key on. Headers listed here are preserved on the request during cache resolution and included in the cache key. Headers not listed in `varies` are stripped before calling the handler.
+
+  For multi-tenant environments, pass `['host', 'x-forwarded-host']` to make the cache unique per tenant.
+</ParamField>
+
+### Function-only options
+
+These options are only available for `defineCachedFunction`.
+
+<ParamField path="options.transform" type="(entry: CacheEntry, ...args) => any">
+  Transform the cache entry before returning. The return value replaces the cached value.
+</ParamField>
+
+<ParamField path="options.validate" type="(entry: CacheEntry, ...args) => boolean">
+  Validate a cache entry. Return `false` to treat the entry as invalid and trigger re-resolution.
+</ParamField>
+
+## SWR behavior
+
+The `swr` option interacts with `maxAge` and `staleMaxAge` as follows:
+
+| `swr` | `maxAge` | `staleMaxAge` | Behavior |
+|---|---|---|---|
+| `true` (default) | `1` (default) | `0` | Cache for 1 second, serve stale while revalidating |
+| `true` | `3600` | `0` | Cache for 1 hour, serve stale while revalidating |
+| `false` | `3600` | — | Cache for 1 hour, wait for fresh value when expired |
+| `true` | `3600` | `600` | Cache for 1 hour, serve stale for up to 10 minutes while revalidating |
+| `true` | `3600` | `-1` | Cache for 1 hour, serve stale indefinitely while revalidating |
+
+When `swr` is enabled and the cached value has expired:
+
+1. The stale cached value is returned immediately to the client.
+2. The handler or function is called in the background to refresh the cache.
+3. On edge workers, `event.waitUntil` keeps the background refresh alive.
+
+When `swr` is disabled and the cached value has expired:
+
+1. The stale entry is cleared.
+2. The client waits for the handler or function to resolve with a fresh value.
+
+## Cache keys and manual invalidation
+
+Cache keys follow this pattern:
+
+```typescript
+`${options.base}:${options.group}:${options.name}:${options.getKey(...args)}.json`
+```
+
+For example, this function:
+
+```typescript
+import { defineCachedFunction } from "nitro/cache";
+
+const getAccessToken = defineCachedFunction(() => {
+  return String(Date.now());
+}, {
+  maxAge: 10,
+  name: "getAccessToken",
+  getKey: () => "default",
+});
+```
+
+Produces the key: `cache:nitro/functions:getAccessToken:default.json`
+
+To manually invalidate it, delete the key from storage:
+
+```typescript
+import { useStorage } from "nitro/storage";
+
+await useStorage("cache").removeItem("nitro/functions:getAccessToken:default.json");
+```
+
+<Note>
+For cached handlers, the cache key includes a hash of the URL path and, when using the `varies` option, hashes of the specified header values appended to the key.
+</Note>
+
+<Note>
+Responses with HTTP status codes `>= 400` or with an undefined body are not cached. This prevents caching error responses.
+</Note>
+
+<CardGroup cols={2}>
+  <Card title="Storage" icon="database" href="/storage">
+    Learn about storage drivers and mount points.
+  </Card>
+  <Card title="Configuration" icon="gear" href="/configuration">
+    Full reference for Nitro config options including routeRules.
+  </Card>
+</CardGroup>

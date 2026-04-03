@@ -1,0 +1,223 @@
+---
+title: "Vercel"
+description: "Deploy Nitro apps to Vercel with serverless functions, edge support, and ISR."
+---
+
+**Preset:** `vercel`
+
+<Note>
+Zero-config detection is supported. Nitro automatically uses the `vercel` preset when it detects a Vercel build environment.
+</Note>
+
+Deploying to Vercel includes automatic support for:
+
+- [Preview deployments](https://vercel.com/docs/deployments/environments)
+- [Fluid compute](https://vercel.com/docs/fluid-compute)
+- [Observability](https://vercel.com/docs/observability)
+- [Vercel Firewall](https://vercel.com/docs/vercel-firewall)
+
+## Deploy
+
+<Steps>
+  <Step title="Connect your repository">
+    Link your Git repository in the [Vercel dashboard](https://vercel.com/new). Vercel detects Nitro automatically and configures the build settings.
+  </Step>
+  <Step title="Push to deploy">
+    Push to your main branch. Vercel builds and deploys the application using the `vercel` preset automatically.
+  </Step>
+</Steps>
+
+<Note>
+The Nitro `/api` directory is not compatible with Vercel's file-based routing. Use `routes/api/` instead for standalone Nitro usage.
+</Note>
+
+## Bun runtime
+
+You can run your Vercel serverless functions with [Bun](https://bun.sh) instead of Node.js.
+
+**Via `nitro.config.ts`:**
+
+```typescript nitro.config.ts
+export default defineNitroConfig({
+  vercel: {
+    functions: {
+      runtime: "bun1.x",
+    },
+  },
+});
+```
+
+**Via `vercel.json`:**
+
+```json vercel.json
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "bunVersion": "1.x"
+}
+```
+
+Nitro detects the `bunVersion` field automatically and applies the Bun runtime.
+
+## Per-route function configuration
+
+Use `vercel.functionRules` to override [serverless function settings](https://vercel.com/docs/build-output-api/primitives#serverless-function-configuration) for specific routes. Route patterns support wildcards via [rou3](https://github.com/h3js/rou3) matching.
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  vercel: {
+    functionRules: {
+      "/api/heavy-computation": {
+        maxDuration: 800,
+        memory: 4096,
+      },
+      "/api/regional": {
+        regions: ["lhr1", "cdg1"],
+      },
+      "/api/queues/process-order": {
+        experimentalTriggers: [{ type: "queue/v2beta", topic: "orders" }],
+      },
+    },
+  },
+});
+```
+
+<Note>
+Array properties (such as `regions`) in a route-level rule replace the base `vercel.functions` arrays rather than merging them.
+</Note>
+
+Each route-level configuration is merged with the base `vercel.functions` config.
+
+## Proxy route rules
+
+Nitro automatically converts `proxy` route rules into CDN-level rewrites on Vercel, so matching requests are proxied at the edge without invoking a serverless function.
+
+```typescript nitro.config.ts
+export default defineNitroConfig({
+  routeRules: {
+    "/api/**": {
+      proxy: "https://api.example.com/**",
+    },
+  },
+});
+```
+
+### When CDN rewrites apply
+
+A proxy rule becomes a Vercel CDN rewrite when **all** of the following are true:
+
+- The target is an external URL (starts with `http://` or `https://`).
+- No advanced `ProxyOptions` are set on the rule.
+
+### Fallback to runtime proxy
+
+The following `ProxyOptions` force the proxy to run in the serverless function instead of at the CDN edge:
+
+- `headers` — custom outgoing request headers
+- `forwardHeaders` / `filterHeaders` — header filtering
+- `fetchOptions` — custom fetch options
+- `cookieDomainRewrite` / `cookiePathRewrite` — cookie manipulation
+- `onResponse` — response callback
+
+<Note>
+Response headers set via the route rule's `headers` option are applied to CDN-level rewrites. Only request-level `ProxyOptions.headers` (sent to the upstream) require a runtime proxy.
+</Note>
+
+## Scheduled tasks (Cron Jobs)
+
+Nitro automatically converts [`scheduledTasks`](/tasks) configuration into [Vercel Cron Jobs](https://vercel.com/docs/cron-jobs) at build time. No manual `vercel.json` cron configuration is required.
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  experimental: {
+    tasks: true,
+  },
+  scheduledTasks: {
+    "0 * * * *": ["cms:update"],
+    "0 0 * * *": ["db:cleanup"],
+  },
+});
+```
+
+### Securing cron endpoints
+
+Set a `CRON_SECRET` environment variable in your Vercel project settings. When present, Nitro validates the `Authorization` header on every cron invocation to prevent unauthorized access.
+
+## Incremental Static Regeneration (ISR)
+
+### On-demand revalidation
+
+Purge the ISR cache for a specific route at any time without waiting for the time interval.
+
+<Steps>
+  <Step title="Generate a revalidation secret">
+    ```bash
+    openssl rand -base64 32
+    ```
+    Save this as an environment variable in your Vercel project settings (e.g., `VERCEL_BYPASS_TOKEN`).
+  </Step>
+  <Step title="Configure the bypass token">
+    ```typescript nitro.config.ts
+    import { defineNitroConfig } from "nitro/config";
+
+    export default defineNitroConfig({
+      vercel: {
+        config: {
+          bypassToken: process.env.VERCEL_BYPASS_TOKEN,
+        },
+      },
+    });
+    ```
+  </Step>
+  <Step title="Trigger revalidation">
+    Send a `GET` or `HEAD` request to the route with the header:
+    ```
+    x-prerender-revalidate: <bypassToken>
+    ```
+    The next request to that route returns a fresh response.
+  </Step>
+</Steps>
+
+### Fine-grained ISR via route rules
+
+Configure ISR caching behavior per route:
+
+```typescript nitro.config.ts
+export default defineNitroConfig({
+  routeRules: {
+    "/products/**": {
+      isr: {
+        expiration: 3600,       // seconds before re-generation; false = never expires
+        allowQuery: ["q"],      // cache independently per value of ?q=
+        passQuery: true,        // pass query string to the handler
+        exposeErrBody: true,    // expose response body on error status codes
+      },
+    },
+  },
+});
+```
+
+| Option | Description |
+|--------|-------------|
+| `expiration` | Seconds before the cached asset is re-generated. `false` means never expires. |
+| `group` | Group number; all assets in the same group are revalidated together. |
+| `allowQuery` | Query params that produce independent cache entries. Empty array ignores query entirely; `undefined` caches each unique query. |
+| `passQuery` | When `true`, the query string is forwarded to the handler. |
+| `exposeErrBody` | When `true`, exposes the response body even for error status codes. |
+
+## Custom build output configuration
+
+Provide additional [Vercel Build Output API v3](https://vercel.com/docs/build-output-api/v3) configuration using `vercel.config` in `nitro.config.ts`. Nitro merges it with the auto-generated config:
+
+```typescript nitro.config.ts
+export default defineNitroConfig({
+  vercel: {
+    config: {
+      // additional build output config
+    },
+  },
+});
+```

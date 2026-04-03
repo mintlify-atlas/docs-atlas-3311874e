@@ -1,0 +1,654 @@
+---
+title: "Routing"
+description: "Filesystem routing, dynamic routes, middleware, route rules, and programmatic handler registration in Nitro."
+---
+
+Nitro supports filesystem routing that automatically maps files to URL routes. By combining code-splitting with compiled routes, it removes the need for a runtime router, leaving only minimal compiled logic.
+
+## Request handler
+
+A Nitro request handler is a function that accepts an `event` object — an [H3Event](https://h3.dev/guide/api/h3event#h3event-properties) instance.
+
+<Tabs>
+  <Tab title="Single function">
+    ```typescript routes/hello.ts
+    import type { H3Event } from "nitro";
+
+    export default (event: H3Event) => {
+      return "world";
+    };
+    ```
+  </Tab>
+  <Tab title="defineHandler">
+    ```typescript routes/hello.ts
+    import { defineHandler } from "nitro";
+
+    // Provides better type inference
+    export default defineHandler((event) => {
+      return "world";
+    });
+    ```
+  </Tab>
+</Tabs>
+
+## Filesystem routing
+
+Nitro maps files in the `routes/` (or `routes/api/`) directory directly to URL routes. Each file must export a single default handler. You can [append the HTTP method](#method-specific-routes) to the filename to restrict a route to a specific request method.
+
+```
+routes/
+  api/
+    test.ts        <-- /api/test
+  hello.get.ts     <-- /hello (GET only)
+  hello.post.ts    <-- /hello (POST only)
+```
+
+Subdirectories map to nested URL segments:
+
+```
+routes/
+  api/
+    [org]/
+      [repo]/
+        index.ts   <-- /api/:org/:repo
+        issues.ts  <-- /api/:org/:repo/issues
+      index.ts     <-- /api/:org
+```
+
+### Static routes
+
+Create a file in `routes/` or `routes/api/`. The filename becomes the route path.
+
+```typescript routes/api/test.ts
+import { defineHandler } from "nitro";
+
+export default defineHandler(() => {
+  return { hello: "API" };
+});
+```
+
+### Dynamic routes
+
+#### Single param
+
+Use `[param]` syntax in the filename or directory name. The value is available via `event.context.params`.
+
+```typescript routes/hello/[name].ts
+import { defineHandler } from "nitro";
+
+export default defineHandler((event) => {
+  const { name } = event.context.params;
+  return `Hello ${name}!`;
+});
+```
+
+A request to `/hello/nitro` returns `Hello nitro!`.
+
+#### Multiple params
+
+Use separate `[param]` directories for each segment. Multiple params cannot share a single filename.
+
+```typescript routes/hello/[name]/[age].ts
+import { defineHandler } from "nitro";
+
+export default defineHandler((event) => {
+  const { name, age } = event.context.params;
+  return `Hello ${name}! You are ${age} years old.`;
+});
+```
+
+#### Catch-all params
+
+Use `[...param]` to capture all remaining URL segments including slashes.
+
+```typescript routes/hello/[...name].ts
+import { defineHandler } from "nitro";
+
+export default defineHandler((event) => {
+  const { name } = event.context.params;
+  return `Hello ${name}!`;
+});
+```
+
+A request to `/hello/nitro/is/hot` returns `Hello nitro/is/hot!`.
+
+#### Catch-all route
+
+A file named `[...].ts` matches any route not handled by a more specific handler.
+
+```typescript routes/[...].ts
+import { defineHandler } from "nitro";
+
+export default defineHandler((event) => {
+  return `Catch-all: ${event.url}`;
+});
+```
+
+### Method-specific routes
+
+Append the HTTP method before the `.ts` extension to restrict a handler to that method.
+
+Supported methods: `get`, `post`, `put`, `delete`, `patch`, `head`, `options`, `connect`, `trace`.
+
+<CodeGroup>
+
+```typescript routes/users/[id].get.ts
+import { defineHandler } from "nitro";
+
+export default defineHandler(async (event) => {
+  const { id } = event.context.params;
+  return `User profile for ${id}`;
+});
+```
+
+```typescript routes/users.post.ts
+import { defineHandler } from "nitro";
+
+export default defineHandler(async (event) => {
+  const body = await event.req.json();
+  // Save to database...
+  return { updated: true };
+});
+```
+
+</CodeGroup>
+
+### Route groups
+
+Wrap a directory name in parentheses to group files without affecting their URL paths.
+
+```
+routes/
+  api/
+    (admin)/
+      users.ts    <-- /api/users
+      reports.ts  <-- /api/reports
+    (public)/
+      index.ts    <-- /api
+```
+
+<Note>
+  Route group folder names are not part of the URL and are used for organization only.
+</Note>
+
+### Environment-specific handlers
+
+Append `.dev`, `.prod`, or `.prerender` before the `.ts` extension (after the method suffix if any) to include a handler only in that environment.
+
+```
+routes/
+  env/
+    index.dev.ts       <-- /env (development only)
+    index.get.prod.ts  <-- /env GET (production only)
+```
+
+<Tip>
+  For more granular control — including preset names as environments — use the programmatic [`routes` config](#routes-config).
+</Tip>
+
+### Ignoring files
+
+Use the `ignore` config option to exclude files from route scanning with glob patterns relative to the server directory.
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  ignore: [
+    "routes/api/**/_*",  // Ignore files starting with _ in api/
+    "middleware/_*.ts",   // Ignore middleware starting with _
+    "routes/_*.ts",       // Ignore root routes starting with _
+  ],
+});
+```
+
+## Programmatic route handlers
+
+In addition to filesystem routing, you can register route handlers programmatically via config.
+
+### `routes` config
+
+The `routes` option maps route patterns to handler files. Each entry can be a string (path to handler) or an object for fine-grained control.
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  routes: {
+    "/api/hello": "./server/routes/api/hello.ts",
+    "/api/custom": {
+      handler: "./server/routes/api/hello.ts",
+      method: "POST",
+      lazy: true,
+    },
+    "/virtual": {
+      handler: "#virtual-route",
+    },
+  },
+});
+```
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `handler` | `string` | Path to event handler file or virtual module ID |
+| `method` | `string` | HTTP method to match (`get`, `post`, etc.) |
+| `lazy` | `boolean` | Use lazy loading to import the handler |
+| `format` | `"web" \| "node"` | Handler type — `"node"` handlers are converted to web-compatible |
+| `env` | `string \| string[]` | Environments to include (`"dev"`, `"prod"`, `"prerender"`, or a preset name) |
+
+### `handlers` config
+
+The `handlers` array registers middleware or handlers with explicit route pattern matching.
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  handlers: [
+    {
+      route: "/api/**",
+      handler: "./server/middleware/api-auth.ts",
+      middleware: true,
+    },
+  ],
+});
+```
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `route` | `string` | HTTP pathname pattern (e.g., `/test`, `/api/:id`, `/blog/**`) |
+| `handler` | `string` | Path to event handler file or virtual module ID |
+| `method` | `string` | HTTP method to match (`get`, `post`, etc.) |
+| `middleware` | `boolean` | Run handler as middleware before route handlers |
+| `lazy` | `boolean` | Use lazy loading to import the handler |
+| `format` | `"web" \| "node"` | Handler type — `"node"` handlers are converted to web-compatible |
+| `env` | `string \| string[]` | Environments to include (`"dev"`, `"prod"`, `"prerender"`, or a preset name) |
+
+## Middleware
+
+Middleware hooks into the request lifecycle and runs before route handlers. Files in the `middleware/` directory are automatically registered for all routes.
+
+```
+middleware/
+  auth.ts
+  logger.ts
+routes/
+  hello.ts
+```
+
+<Warning>
+  Middleware should not return a value. Returning anything from middleware closes the request immediately — further handlers will not execute.
+</Warning>
+
+### Simple middleware
+
+Middleware is defined exactly like a route handler, but returns nothing. Use it to augment the event context.
+
+```typescript middleware/auth.ts
+import { defineHandler } from "nitro";
+
+export default defineHandler((event) => {
+  event.context.user = { name: "Nitro" };
+});
+```
+
+### Execution order
+
+Middleware runs in directory listing order. Prefix filenames with numbers to control the order explicitly.
+
+```
+middleware/
+  01.logger.ts  <-- First
+  02.auth.ts    <-- Second
+  03.cors.ts    <-- Third
+```
+
+<Note>
+  Files are sorted as strings, so prefix single-digit numbers with a leading zero (`01`, `02`) when you have 10 or more middleware files in a directory.
+</Note>
+
+### Request filtering
+
+Middleware runs on every request. Apply conditional logic to scope it to specific routes or conditions.
+
+```typescript middleware/auth.ts
+import { defineHandler } from "nitro";
+
+export default defineHandler((event) => {
+  // Only apply to /auth routes
+  if (event.url.pathname.startsWith("/auth")) {
+    event.context.user = { name: "Nitro" };
+  }
+});
+```
+
+### Route-scoped middleware
+
+Use the [`handlers` config](#handlers-config) with `middleware: true` and a specific `route` pattern to scope middleware without affecting all requests.
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  handlers: [
+    {
+      route: "/api/**",
+      handler: "./server/middleware/api-auth.ts",
+      middleware: true,
+    },
+  ],
+});
+```
+
+Unlike global middleware (which matches `/**`), route-scoped middleware only runs for requests matching the specified pattern.
+
+### Route meta
+
+Use the `defineRouteMeta` macro inside a route file to attach build-time metadata such as OpenAPI annotations.
+
+<Note>
+  This feature is currently experimental.
+</Note>
+
+```typescript routes/api/test.ts
+import { defineRouteMeta, defineHandler } from "nitro";
+
+defineRouteMeta({
+  openAPI: {
+    tags: ["test"],
+    description: "Test route description",
+    parameters: [{ in: "query", name: "test", required: true }],
+  },
+});
+
+export default defineHandler(() => "OK");
+```
+
+See the [OpenAPI specification](https://swagger.io/specification/v3/) for all available annotation options.
+
+## Error handling
+
+Use the [error utilities from H3](https://h3.dev/guide/basics/error) to handle errors in routes and middleware.
+
+In development, browser requests (with `Accept: text/html`) receive an HTML error page. In production, errors are always returned as JSON. This behavior can be overridden via request headers such as `Accept` or `User-Agent`.
+
+## Code splitting
+
+Nitro generates a separate chunk for each route handler. Chunks load on-demand when first requested — `/api/users` does not load code for `/api/posts`.
+
+To bundle everything into a single file, see [`inlineDynamicImports`](/configuration).
+
+## Route rules
+
+Route rules let you apply logic at the configuration level for any matching route pattern. They support redirects, proxying, caching, authentication, headers, and more.
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  routeRules: {
+    "/blog/**":        { swr: true },
+    "/blog2/**":       { swr: 600 },
+    "/blog3/**":       { static: true },
+    "/assets/**":      { headers: { "cache-control": "s-maxage=0" } },
+    "/api/v1/**":      { cors: true, headers: { "access-control-allow-methods": "GET" } },
+    "/old-page":       { redirect: "/new-page" },
+    "/proxy/example":  { proxy: "https://example.com" },
+    "/admin/**":       { basicAuth: { username: "admin", password: "supersecret" } },
+  },
+});
+```
+
+### Rule merging and overrides
+
+Rules are matched from least specific to most specific and merged, with more specific patterns taking precedence. Set a rule to `false` to disable it for a sub-path.
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  routeRules: {
+    "/api/cached/**":      { swr: true },
+    "/api/cached/no-cache": { cache: false, swr: false },
+    "/admin/**":            { basicAuth: { username: "admin", password: "secret" } },
+    "/admin/public/**":     { basicAuth: false },
+  },
+});
+```
+
+### Headers
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  routeRules: {
+    "/api/**": { headers: { "cache-control": "s-maxage=60" } },
+    "**":      { headers: { "x-powered-by": "Nitro" } },
+  },
+});
+```
+
+### CORS
+
+`cors: true` sets permissive CORS headers (`access-control-allow-origin: *`, all methods, all headers). Override individual headers using `headers`.
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  routeRules: {
+    "/api/v1/**": {
+      cors: true,
+      headers: { "access-control-allow-methods": "GET" },
+    },
+  },
+});
+```
+
+### Redirect
+
+Use a string for a simple `307` redirect, or an object to set a custom status code.
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  routeRules: {
+    "/old-page":   { redirect: "/new-page" },
+    "/legacy":     { redirect: { to: "https://example.com/", status: 308 } },
+    "/old-blog/**": { redirect: "https://blog.example.com/**" },
+  },
+});
+```
+
+### Proxy
+
+Proxy requests to internal or external targets. Wildcards in the pattern are forwarded to the target.
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  routeRules: {
+    "/api/proxy/example": { proxy: "https://example.com" },
+    "/api/proxy/**":      { proxy: "/api/echo" },
+    "/cdn/**":            { proxy: "https://cdn.jsdelivr.net/**" },
+    "/external/**": {
+      proxy: {
+        to: "https://api.example.com/**",
+        // additional H3 proxy options...
+      },
+    },
+  },
+});
+```
+
+### Basic auth
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  routeRules: {
+    "/admin/**": {
+      basicAuth: {
+        username: "admin",
+        password: "supersecret",
+        realm: "Admin Area", // shown in the browser prompt
+      },
+    },
+    "/admin/public/**": { basicAuth: false },
+  },
+});
+```
+
+### Caching (SWR / static)
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  routeRules: {
+    "/blog/**":        { swr: true },      // stale-while-revalidate
+    "/blog/posts/**":  { swr: 600 },       // SWR with 600s maxAge
+    "/api/data/**":    { cache: { maxAge: 60, swr: true } },
+    "/api/realtime/**": { cache: false },
+  },
+});
+```
+
+<Tip>
+  `swr: true` is a shortcut for `cache: { swr: true }`. `swr: 600` is a shortcut for `cache: { swr: true, maxAge: 600 }`.
+</Tip>
+
+### Prerender
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  routeRules: {
+    "/about":     { prerender: true },
+    "/dynamic/**": { prerender: false },
+  },
+});
+```
+
+### ISR (Vercel)
+
+Configure Incremental Static Regeneration for Vercel deployments.
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  routeRules: {
+    "/isr/**":     { isr: true },
+    "/isr-ttl/**": { isr: 60 },
+    "/isr-custom/**": {
+      isr: {
+        expiration: 60,
+        allowQuery: ["q"],
+        group: 1,
+      },
+    },
+  },
+});
+```
+
+### Route rules reference
+
+<Accordion title="All route rule options">
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `headers` | `Record<string, string>` | Custom response headers |
+| `redirect` | `string \| { to: string, status?: number }` | Redirect to another URL (default status: `307`) |
+| `proxy` | `string \| { to: string, ...proxyOptions }` | Proxy requests to another URL |
+| `cors` | `boolean` | Enable permissive CORS headers |
+| `cache` | `object \| false` | Cache options (see [cache guide](/cache)) |
+| `swr` | `boolean \| number` | Shortcut for `cache: { swr: true, maxAge: number }` |
+| `static` | `boolean \| number` | Shortcut for static caching |
+| `basicAuth` | `{ username, password, realm? } \| false` | HTTP Basic Authentication |
+| `prerender` | `boolean` | Enable/disable prerendering at build time |
+| `isr` | `boolean \| number \| object` | Incremental Static Regeneration (Vercel) |
+
+</Accordion>
+
+### Runtime route rules
+
+Route rules can be provided via `runtimeConfig` to allow overrides through environment variables without rebuilding.
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  runtimeConfig: {
+    nitro: {
+      routeRules: {
+        "/api/**": { headers: { "x-env": "production" } },
+      },
+    },
+  },
+});
+```
+
+## Internal fetch
+
+Use `serverFetch` (or the auto-imported `fetch`) to call your own API routes from within the server — for example, from a renderer, a plugin, or another route handler.
+
+```typescript routes/composite.ts
+import { defineHandler } from "nitro";
+import { serverFetch } from "nitro";
+
+export default defineHandler(async (event) => {
+  // Call an internal API route directly (no network round-trip)
+  const data = await serverFetch("/api/users").then((r) => r.json());
+  return { users: data };
+});
+```
+
+`serverFetch` is equivalent to calling `fetch` with a relative URL. When imported from `nitro`, `fetch` automatically routes relative URLs (starting with `/`) through `serverFetch`. External URLs (starting with `http` or `https`) go through the standard `globalThis.fetch`.
+
+```typescript
+import { fetch } from "nitro";
+
+// Internal route — no network
+const res = await fetch("/api/hello");
+
+// External URL — goes through globalThis.fetch
+const ext = await fetch("https://api.example.com/data");
+```
+
+You can also pass an H3 event context as the third argument to propagate request context:
+
+```typescript
+import { defineHandler } from "nitro";
+import { serverFetch } from "nitro";
+
+export default defineHandler(async (event) => {
+  // Pass the current request context to the internal fetch
+  const res = await serverFetch("/api/data", {}, event.context);
+  return res.json();
+});
+```
+
+## Config reference
+
+<Accordion title="All routing config options">
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `baseURL` | `string` | `"/"` | Base URL for all routes |
+| `apiBaseURL` | `string` | `"/api"` | Base URL for routes in the `api/` directory |
+| `apiDir` | `string` | `"api"` | Directory name for API routes |
+| `routesDir` | `string` | `"routes"` | Directory name for file-based routes |
+| `serverDir` | `string \| false` | `false` | Server directory for scanning routes, middleware, and plugins |
+| `scanDirs` | `string[]` | `[]` | Additional directories to scan for routes |
+| `routes` | `Record<string, string \| handler>` | `{}` | Route-to-handler mapping |
+| `handlers` | `NitroEventHandler[]` | `[]` | Programmatic handler registration |
+| `routeRules` | `Record<string, NitroRouteConfig>` | `{}` | Route rules for matching patterns |
+| `ignore` | `string[]` | `[]` | Glob patterns to ignore during file scanning |
+
+</Accordion>

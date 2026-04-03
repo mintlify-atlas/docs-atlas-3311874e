@@ -1,0 +1,606 @@
+---
+title: "Configuration"
+description: "Customize and extend Nitro defaults using the configuration file, environment variables, and runtime config."
+---
+
+# Configuration
+
+Nitro uses [c12](https://github.com/unjs/c12) to load configuration, giving you a flexible system with multiple file formats, environment-specific overrides, and config composition.
+
+## Config file
+
+<CodeGroup>
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  // Nitro options
+});
+```
+
+```typescript vite.config.ts
+import { defineConfig } from "vite";
+import { nitro } from "nitro/vite";
+
+export default defineConfig({
+  plugins: [
+    nitro({
+      // Nitro options
+    }),
+  ],
+});
+```
+</CodeGroup>
+
+<Tip>
+  Because Nitro uses [c12](https://github.com/unjs/c12), you can also place config in a `.nitrorc` file in your project root or home directory, or under the `"nitro"` key in `package.json`.
+</Tip>
+
+### Config from `package.json`
+
+```json package.json
+{
+  "nitro": {
+    "preset": "node_server"
+  }
+}
+```
+
+### Environment-specific config
+
+Use the `$development` and `$production` keys to apply overrides for specific environments. The environment is `"development"` during `nitro dev` and `"production"` during `nitro build`.
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  logLevel: 3,
+  $development: {
+    debug: true,
+  },
+  $production: {
+    minify: true,
+    sourcemap: false,
+  },
+});
+```
+
+### Extending configs
+
+Use the `extends` key to compose from a base config file or a preset:
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  extends: "./base.config",
+});
+```
+
+---
+
+## Environment variables
+
+Certain Nitro behaviors can be overridden at runtime using environment variables:
+
+| Variable | Description |
+|---|---|
+| `NITRO_PRESET` | Override the deployment preset. |
+| `NITRO_COMPATIBILITY_DATE` | Set the compatibility date. |
+| `NITRO_APP_BASE_URL` | Override the base URL (default: `/`). |
+
+---
+
+## Directory options
+
+<ParamField path="rootDir" type="string" default=".">
+  The root directory of the project.
+</ParamField>
+
+<ParamField path="serverDir" type="string | false" default="false">
+  Server source directory. Set to `"server"` or `"./"` to enable file-based scanning. When `false`, no directory is scanned automatically.
+</ParamField>
+
+<ParamField path="scanDirs" type="string[]" default="[]">
+  Additional directories to scan for route handlers, plugins, and middleware.
+</ParamField>
+
+<ParamField path="apiDir" type="string" default="api">
+  Directory (relative to `serverDir`) where API route files are placed.
+</ParamField>
+
+<ParamField path="routesDir" type="string" default="routes">
+  Directory (relative to `serverDir`) where route handler files are placed.
+</ParamField>
+
+<ParamField path="buildDir" type="string" default="node_modules/.nitro">
+  Directory for intermediate build artifacts.
+</ParamField>
+
+<ParamField path="output.dir" type="string" default=".output">
+  Production output directory.
+</ParamField>
+
+<ParamField path="output.serverDir" type="string" default=".output/server">
+  Server bundle output directory.
+</ParamField>
+
+<ParamField path="output.publicDir" type="string" default=".output/public">
+  Public assets output directory.
+</ParamField>
+
+<Note>
+  The `srcDir` option is deprecated. Use `serverDir` instead.
+</Note>
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  serverDir: "server",
+  buildDir: "node_modules/.nitro",
+  output: {
+    dir: ".output",
+    serverDir: ".output/server",
+    publicDir: ".output/public",
+  },
+});
+```
+
+---
+
+## Core options
+
+<ParamField path="preset" type="string">
+  The deployment preset to use. Can also be set via the `NITRO_PRESET` environment variable. See [deploy](/deploy/index) for available presets.
+</ParamField>
+
+<ParamField path="baseURL" type="string" default="/">
+  The base URL for all routes. Can also be set via `NITRO_APP_BASE_URL`.
+</ParamField>
+
+<ParamField path="apiBaseURL" type="string">
+  Base URL prefix for auto-scanned API routes.
+</ParamField>
+
+<ParamField path="compatibilityDate" type="string" default="latest">
+  Sets the compatibility date for feature flags and preset behavior. Use a date string like `"2024-11-01"` to pin behavior.
+</ParamField>
+
+<ParamField path="logLevel" type="number" default="3">
+  Log verbosity level (uses [consola](https://github.com/unjs/consola) levels). `0` = silent, `1` = error, `2` = warn, `3` = info, `4` = debug, `5` = trace.
+</ParamField>
+
+<ParamField path="debug" type="boolean" default="false">
+  Enable debug mode. Automatically set when the `DEBUG` environment variable is present.
+</ParamField>
+
+<ParamField path="minify" type="boolean" default="false">
+  Minify the server bundle output.
+</ParamField>
+
+<ParamField path="sourcemap" type="boolean" default="false">
+  Generate source maps for the server bundle.
+</ParamField>
+
+<ParamField path="node" type="boolean" default="true">
+  Whether to target a Node.js environment. Set to `false` for edge/worker runtimes.
+</ParamField>
+
+---
+
+## Runtime configuration
+
+Define runtime config values in `nitro.config.ts` to expose them within your application. Values can be overridden at runtime via environment variables prefixed with `NITRO_`.
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  runtimeConfig: {
+    apiToken: "dev_token",
+    database: {
+      host: "localhost",
+      port: 5432,
+    },
+  },
+});
+```
+
+Access runtime config in handlers using `useRuntimeConfig()`:
+
+```typescript api/example.get.ts
+import { defineHandler } from "nitro";
+import { useRuntimeConfig } from "nitro/runtime-config";
+
+export default defineHandler((event) => {
+  const config = useRuntimeConfig();
+  return { token: config.apiToken };
+});
+```
+
+Override values using environment variables. Keys are mapped from `camelCase` to `UPPER_SNAKE_CASE` with the `NITRO_` prefix:
+
+```bash .env
+NITRO_API_TOKEN="prod_token"
+NITRO_DATABASE_HOST="db.example.com"
+NITRO_DATABASE_PORT="5433"
+```
+
+<Warning>
+  Only keys that are already defined in `runtimeConfig` within your config file will be picked up from environment variables. You cannot introduce new keys via environment variables alone.
+</Warning>
+
+<Note>
+  `.env` and `.env.local` files are only loaded during development (`nitro dev`). In production, use your platform's native environment variable mechanism.
+</Note>
+
+### Custom env prefix
+
+Configure a secondary prefix in addition to `NITRO_`:
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  runtimeConfig: {
+    nitro: {
+      envPrefix: "APP_",
+    },
+    apiToken: "",
+  },
+});
+```
+
+With this configuration, both `NITRO_API_TOKEN` and `APP_API_TOKEN` are checked.
+
+### Env expansion
+
+Enable `{{VAR_NAME}}` interpolation in runtime config string values:
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  experimental: {
+    envExpansion: true,
+  },
+  runtimeConfig: {
+    url: "https://{{APP_DOMAIN}}/api",
+  },
+});
+```
+
+```bash .env
+APP_DOMAIN="example.com"
+```
+
+At runtime, `useRuntimeConfig().url` resolves to `"https://example.com/api"`.
+
+---
+
+## Route rules
+
+Apply per-route configuration such as caching, redirects, headers, proxies, and CORS:
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  routeRules: {
+    "/api/**": { cors: true },
+    "/blog/**": { swr: 3600 },
+    "/old-page": { redirect: "/new-page" },
+    "/docs/**": { headers: { "x-robots-tag": "noindex" } },
+  },
+});
+```
+
+<Info>
+  See [routing](/routing) for full details on available route rule options.
+</Info>
+
+---
+
+## Storage
+
+<ParamField path="storage" type="StorageMounts">
+  Configure named storage mounts for production. Each mount key maps to an [unstorage](https://github.com/unjs/unstorage) driver configuration.
+</ParamField>
+
+<ParamField path="devStorage" type="StorageMounts">
+  Configure storage mounts used only during development. Overrides `storage` in dev mode.
+</ParamField>
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  storage: {
+    cache: { driver: "redis", url: "redis://localhost:6379" },
+    data: { driver: "fs", base: "./data" },
+  },
+  devStorage: {
+    cache: { driver: "fs", base: "./.nitro/cache" },
+    data: { driver: "fs", base: "./data" },
+  },
+});
+```
+
+<Info>
+  See [storage](/storage) for full details on storage drivers and usage.
+</Info>
+
+---
+
+## Database
+
+<ParamField path="database" type="DatabaseConnectionConfigs">
+  Named database connection configurations for production. Requires `experimental.database: true`.
+</ParamField>
+
+<ParamField path="devDatabase" type="DatabaseConnectionConfigs">
+  Named database connection configurations for development. Overrides `database` in dev mode.
+</ParamField>
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  experimental: {
+    database: true,
+  },
+  database: {
+    default: {
+      connector: "postgresql",
+      options: { url: process.env.DATABASE_URL },
+    },
+  },
+  devDatabase: {
+    default: {
+      connector: "sqlite",
+      options: { name: "dev" },
+    },
+  },
+});
+```
+
+<Info>
+  See [database](/database) for full details.
+</Info>
+
+---
+
+## Assets
+
+### Public assets
+
+<ParamField path="publicAssets" type="PublicAssetDir[]" default="[]">
+  Static files served directly to clients. Each entry specifies a directory, optional base URL, and cache max-age.
+</ParamField>
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  publicAssets: [
+    {
+      dir: "./public",
+      maxAge: 60 * 60 * 24 * 365, // 1 year
+    },
+    {
+      baseURL: "/uploads",
+      dir: "./uploads",
+      maxAge: 60 * 60, // 1 hour
+    },
+  ],
+});
+```
+
+<ParamField path="compressPublicAssets" type="boolean | { gzip?: boolean; brotli?: boolean; zstd?: boolean }" default="false">
+  Pre-compress public assets at build time. Pass `true` to enable gzip and brotli, or pass an object to select specific algorithms.
+</ParamField>
+
+### Server assets
+
+<ParamField path="serverAssets" type="ServerAssetDir[]" default="[]">
+  Files bundled into the server build and accessible via `useStorage('assets:server')`.
+</ParamField>
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  serverAssets: [
+    {
+      baseName: "templates",
+      dir: "./server/templates",
+    },
+  ],
+});
+```
+
+<Info>
+  See [assets](/assets) for full details.
+</Info>
+
+---
+
+## Handlers, plugins, and routes
+
+<ParamField path="handlers" type="NitroEventHandler[]" default="[]">
+  Explicitly register route handlers. Useful for programmatic handler registration outside of file-based routing.
+</ParamField>
+
+<ParamField path="plugins" type="string[]" default="[]">
+  Paths to plugin files that are executed during server initialization.
+</ParamField>
+
+<ParamField path="routes" type="Record<string, string | NitroEventHandler>" default="{}">
+  Map of route patterns to handler file paths or handler config objects.
+</ParamField>
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  handlers: [
+    { route: "/api/custom", handler: "./handlers/custom.ts", method: "get" },
+  ],
+  plugins: ["./plugins/analytics.ts"],
+  routes: {
+    "/status": "./handlers/status.ts",
+  },
+});
+```
+
+<Info>
+  See [plugins](/plugins) for full details on writing Nitro plugins.
+</Info>
+
+---
+
+## Prerender options
+
+<ParamField path="prerender.routes" type="string[]" default="[]">
+  List of routes to prerender at build time.
+</ParamField>
+
+<ParamField path="prerender.crawlLinks" type="boolean" default="false">
+  Automatically crawl links found in prerendered HTML to discover additional routes.
+</ParamField>
+
+<ParamField path="prerender.ignore" type="Array<string | RegExp | Function>" default="[]">
+  Patterns for routes that should be skipped during prerendering.
+</ParamField>
+
+<ParamField path="prerender.failOnError" type="boolean" default="false">
+  Fail the build if any prerendering error occurs.
+</ParamField>
+
+<ParamField path="prerender.concurrency" type="number" default="1">
+  Number of routes to prerender concurrently.
+</ParamField>
+
+<ParamField path="prerender.interval" type="number" default="0">
+  Delay in milliseconds between prerender requests.
+</ParamField>
+
+<ParamField path="prerender.retry" type="number" default="3">
+  Number of retries for failed prerender requests.
+</ParamField>
+
+<ParamField path="prerender.retryDelay" type="number" default="500">
+  Delay in milliseconds between retries.
+</ParamField>
+
+<ParamField path="prerender.autoSubfolderIndex" type="boolean" default="true">
+  Produce `/route/index.html` instead of `/route.html` for HTML routes.
+</ParamField>
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  prerender: {
+    routes: ["/", "/about", "/blog"],
+    crawlLinks: true,
+    failOnError: true,
+    concurrency: 4,
+    ignore: ["/api/**"],
+  },
+});
+```
+
+---
+
+## TypeScript
+
+<ParamField path="typescript.strict" type="boolean" default="true">
+  Enable strict TypeScript checking in the generated `tsconfig.json`.
+</ParamField>
+
+<ParamField path="typescript.generateRuntimeConfigTypes" type="boolean" default="false">
+  Generate TypeScript types for `useRuntimeConfig()` based on your config.
+</ParamField>
+
+<ParamField path="typescript.generateTsConfig" type="boolean" default="false">
+  Generate a `tsconfig.json` file in the build directory.
+</ParamField>
+
+<ParamField path="typescript.tsconfigPath" type="string" default="tsconfig.json">
+  Path of the generated `tsconfig.json` relative to the generated types directory.
+</ParamField>
+
+---
+
+## Auto-imports
+
+<ParamField path="imports" type="Partial<UnimportPluginOptions> | false" default="false">
+  Configure auto-imports using [unimport](https://github.com/unjs/unimport). Set to `false` to disable auto-imports entirely.
+</ParamField>
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  imports: {
+    presets: [
+      { from: "zod", imports: ["z"] },
+    ],
+  },
+});
+```
+
+---
+
+## Experimental flags
+
+<ParamField path="experimental.openAPI" type="boolean">
+  Enable OpenAPI spec generation from route types.
+</ParamField>
+
+<ParamField path="experimental.asyncContext" type="boolean">
+  Enable native async context support for `useRequest()`.
+</ParamField>
+
+<ParamField path="experimental.envExpansion" type="boolean">
+  Allow `{{VAR_NAME}}` interpolation in runtime config string values.
+</ParamField>
+
+<ParamField path="experimental.database" type="boolean">
+  Enable the experimental database integration.
+</ParamField>
+
+<ParamField path="experimental.tasks" type="boolean">
+  Enable the experimental tasks system.
+</ParamField>
+
+---
+
+## Renderer and server entry
+
+<ParamField path="renderer" type="{ template?: string; handler?: string; static?: boolean } | false">
+  Configure the catch-all renderer. Set `template` for an HTML file, `handler` for a custom renderer module, or `false` to disable. See [renderer](/renderer).
+</ParamField>
+
+<ParamField path="serverEntry" type="string | { handler: string; format?: 'web' | 'node' } | false">
+  Override the auto-detected server entry file. Set to `false` to disable. See [server-entry](/server-entry).
+</ParamField>
+
+---
+
+<CardGroup cols={2}>
+  <Card title="Routing" href="/routing">
+    Route rules, route handlers, and routing configuration.
+  </Card>
+  <Card title="Storage" href="/storage">
+    Storage drivers and mount configuration.
+  </Card>
+  <Card title="Cache" href="/cache">
+    Caching strategies and route-level cache config.
+  </Card>
+  <Card title="Deploy" href="/deploy/index">
+    Available deployment presets.
+  </Card>
+</CardGroup>

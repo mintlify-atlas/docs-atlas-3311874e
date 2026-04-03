@@ -1,0 +1,373 @@
+---
+title: "Renderer"
+description: "Use a renderer to handle all unmatched routes with custom HTML, server-side rendering, or a templating system."
+---
+
+# Renderer
+
+The renderer is a special catch-all handler that processes any request that does not match a specific API or route handler. It is the foundation for serving SPAs, implementing SSR, and building dynamic HTML responses.
+
+## Configuration
+
+Configure the renderer via the `renderer` option in `nitro.config.ts`:
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  renderer: {
+    template: "./index.html",  // Path to an HTML template file
+    handler: "./renderer.ts",  // Path to a custom renderer module
+    static: false,             // Treat template as static HTML
+  },
+});
+```
+
+| Option | Type | Description |
+|---|---|---|
+| `template` | `string` | Path to an HTML file used as the renderer template. |
+| `handler` | `string` | Path to a custom renderer handler module. Overrides `template` when set. |
+| `static` | `boolean` | When `true`, skips template processing and serves HTML as-is. Auto-detected when not set. |
+
+Set `renderer: false` to explicitly disable the renderer, including auto-detection of `index.html`.
+
+---
+
+## HTML template
+
+### Auto-detected `index.html`
+
+Nitro automatically looks for an `index.html` in your project source directory. When found, it is served for all unmatched routes.
+
+<Tip>
+  When `index.html` is detected, Nitro logs: `Using index.html as renderer template.`
+</Tip>
+
+<CodeGroup>
+```html index.html
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>My App</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
+```
+
+```typescript routes/api/hello.ts
+import { defineHandler } from "nitro";
+
+export default defineHandler((event) => {
+  return { hello: "API" };
+});
+```
+</CodeGroup>
+
+With this setup:
+- `/api/hello` → Handled by the API route
+- `/about`, `/contact`, etc. → Served with `index.html`
+
+### Custom HTML template
+
+Specify a different HTML file using `renderer.template`:
+
+<CodeGroup>
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  renderer: {
+    template: "./app.html",
+  },
+});
+```
+
+```html app.html
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>My App</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
+```
+</CodeGroup>
+
+### Static templates
+
+By default, Nitro auto-detects whether your HTML template uses [rendu](#hypertext-preprocessor-experimental) syntax. You can override this with `static`:
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  renderer: {
+    template: "./index.html",
+    static: true, // Always serve as static HTML — skip template processing
+  },
+});
+```
+
+In production, static templates are inlined directly into the server bundle for optimal performance.
+
+---
+
+## Hypertext Preprocessor (experimental)
+
+Nitro uses [rendu](https://github.com/h3js/rendu), a Hypertext Preprocessor that enables dynamic HTML templates with embedded JavaScript expressions.
+
+### Output expressions
+
+```html
+<!-- HTML-escaped output -->
+<h1>Hello {{ $URL.pathname }}</h1>
+
+<!-- Raw (unescaped) output -->
+<div>{{{ '<strong>bold</strong>' }}}</div>
+
+<!-- Alternative raw syntax -->
+<p><?= $COOKIES["user"] || "Guest" ?></p>
+```
+
+### Control flow
+
+Use `<? ... ?>` for JavaScript control flow within the template:
+
+```html
+<? if ($METHOD === 'POST') { ?>
+  <p>Form submitted!</p>
+<? } else { ?>
+  <form method="POST">
+    <button type="submit">Submit</button>
+  </form>
+<? } ?>
+
+<ul>
+<? for (const item of ['apple', 'banana', 'cherry']) { ?>
+  <li>{{ item }}</li>
+<? } ?>
+</ul>
+```
+
+### Server scripts
+
+Use `<script server>` to execute JavaScript on the server before rendering:
+
+```html
+<script server>
+  const data = await fetch("https://api.example.com/data").then((r) => r.json());
+</script>
+<pre>{{ JSON.stringify(data, null, 2) }}</pre>
+```
+
+### Streaming
+
+Use the `echo()` function to stream content progressively. It accepts strings, Promises, functions, `Response` objects, and `ReadableStream` instances:
+
+```html
+<script server>
+  echo("Loading...");
+  echo(async () => fetch("https://api.example.com/content"));
+</script>
+```
+
+### Global variables
+
+| Variable | Description |
+|---|---|
+| `$REQUEST` | The incoming `Request` object |
+| `$METHOD` | HTTP method (`GET`, `POST`, etc.) |
+| `$URL` | Request `URL` object |
+| `$HEADERS` | Request headers |
+| `$RESPONSE` | Response configuration object |
+| `$COOKIES` | Read-only object of request cookies |
+
+### Built-in functions
+
+| Function | Description |
+|---|---|
+| `htmlspecialchars(str)` | Escape HTML characters (automatically applied in `{{ }}`) |
+| `setCookie(name, value, options?)` | Set a cookie in the response |
+| `redirect(url)` | Redirect the client to another URL |
+| `echo(content)` | Stream content to the response |
+
+### Full example
+
+```html index.html
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Dynamic App</title>
+  </head>
+  <body>
+    <h1>Hello {{ $URL.pathname }}</h1>
+    <p>Welcome, <?= $COOKIES["user"] || "Guest" ?>!</p>
+    <script server>
+      setCookie("visited", "true", { maxAge: 3600 });
+      const message = await fetch("/api/hello").then((r) => r.json());
+    </script>
+    <p>{{ message.hello }}</p>
+  </body>
+</html>
+```
+
+---
+
+## Custom renderer handler
+
+For complex scenarios, create a custom renderer module that programmatically generates responses. The handler receives an object with `req` (the `Request`) and `url` (the `URL`):
+
+<CodeGroup>
+```typescript renderer.ts
+import { fetch } from "nitro";
+
+export default async function renderer({ req, url }: { req: Request; url: URL }) {
+  // Call an internal API route
+  const apiRes = await fetch("/api/hello").then((res) => res.text());
+
+  return new Response(
+    /* html */ `<!DOCTYPE html>
+    <html>
+      <head>
+        <title>Custom Renderer</title>
+      </head>
+      <body>
+        <h1>Hello from custom renderer!</h1>
+        <p>Current path: ${url.pathname}</p>
+        <p>API says: ${apiRes}</p>
+      </body>
+    </html>`,
+    { headers: { "content-type": "text/html; charset=utf-8" } }
+  );
+}
+```
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  serverDir: "./",
+  renderer: {
+    handler: "./renderer",
+  },
+});
+```
+</CodeGroup>
+
+<Note>
+  When `renderer.handler` is set, it takes full control of rendering. The `renderer.template` option is ignored.
+</Note>
+
+---
+
+## Renderer priority
+
+The renderer is registered as a catch-all route (`/**`) with the lowest priority. Specific routes always take precedence:
+
+```
+api/
+  users.ts        → /api/users        (matched first)
+routes/
+  about.ts        → /about            (matched second)
+renderer.ts         → /**             (catches everything else)
+```
+
+<Warning>
+  If you define a catch-all route (`[...].ts`) in your routes directory, Nitro will warn that the renderer will override it. Use more specific routes or different HTTP methods to avoid conflicts.
+</Warning>
+
+---
+
+## Vite integration
+
+### Development mode
+
+In development with Vite, the renderer template is read from disk on every request. Changes to `index.html` are reflected immediately without restarting the server. Vite's `transformIndexHtml` hook injects HMR client scripts automatically.
+
+### SSR with `<!--ssr-outlet-->`
+
+When using Vite environments with an `ssr` service, add an `<!--ssr-outlet-->` comment to your `index.html`. Nitro replaces it with the SSR output during rendering:
+
+```html index.html
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>SSR App</title>
+  </head>
+  <body>
+    <div id="app"><!--ssr-outlet--></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
+```
+
+### Production build
+
+During production builds, Vite processes `index.html` through its full build pipeline (resolving scripts, CSS, and assets). Nitro then inlines the transformed HTML into the server bundle.
+
+---
+
+## Use cases
+
+### Single-Page Application (SPA)
+
+Serve `index.html` for all routes to enable client-side routing. This is the default Nitro behavior when used with Vite:
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  // index.html is auto-detected — no explicit config needed
+});
+```
+
+### Dynamic HTML with server data
+
+Use rendu's `<script server>` to fetch and embed data at render time:
+
+```html index.html
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Server Data</title>
+  </head>
+  <body>
+    <script server>
+      const posts = await fetch("https://api.example.com/posts").then((r) => r.json());
+    </script>
+    <ul>
+    <? for (const post of posts) { ?>
+      <li><a href="/posts/{{ post.id }}">{{ post.title }}</a></li>
+    <? } ?>
+    </ul>
+  </body>
+</html>
+```
+
+---
+
+<CardGroup cols={2}>
+  <Card title="Server Entry" href="/server-entry">
+    Intercept all requests before they reach the renderer.
+  </Card>
+  <Card title="Lifecycle" href="/lifecycle">
+    Understand the full Nitro request and render lifecycle.
+  </Card>
+  <Card title="Routing" href="/routing">
+    Define route handlers that take priority over the renderer.
+  </Card>
+  <Card title="Assets" href="/assets">
+    Serve static files alongside rendered pages.
+  </Card>
+</CardGroup>

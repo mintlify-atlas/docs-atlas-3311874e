@@ -1,0 +1,90 @@
+---
+title: "Azure"
+description: "Deploy Nitro apps to Azure Static Web Apps."
+---
+
+**Preset:** `azure-swa`
+
+<Note>
+Zero-config detection is supported. Nitro automatically uses the `azure-swa` preset when it detects an Azure Static Web Apps build environment.
+</Note>
+
+[Azure Static Web Apps](https://azure.microsoft.com/en-us/products/app-service/static) deploys your Nitro application continuously via a [GitHub Actions workflow](https://docs.microsoft.com/en-us/azure/static-web-apps/github-actions-workflow).
+
+## Deploy via GitHub Actions
+
+<Steps>
+  <Step title="Link your GitHub repository">
+    In the Azure portal, create a new Static Web Apps resource and connect it to your GitHub repository.
+  </Step>
+  <Step title="Configure the workflow">
+    When prompted to select your framework, choose **Custom** and provide these values:
+
+    | Input | Value |
+    |-------|-------|
+    | `app_location` | `/` |
+    | `api_location` | `.output/server` |
+    | `output_location` | `.output/public` |
+  </Step>
+  <Step title="Verify the workflow file">
+    Azure adds a workflow file to your repository. Confirm the build configuration section matches:
+
+    ```yaml .github/workflows/azure-static-web-apps-<RANDOM_NAME>.yml
+    app_location: '/'
+    api_location: '.output/server'
+    output_location: '.output/public'
+    ```
+  </Step>
+  <Step title="Push to deploy">
+    Push to your configured branch. Azure Static Web Apps builds and deploys automatically on every push.
+  </Step>
+</Steps>
+
+## Local preview
+
+Install [Azure Functions Core Tools](https://docs.microsoft.com/en-us/azure/azure-functions/functions-run-local) to test locally before deploying.
+
+```bash
+NITRO_PRESET=azure nitro build
+npx @azure/static-web-apps-cli start .output/public --api-location .output/server
+```
+
+## Generated configuration
+
+Nitro automatically generates a `staticwebapp.config.json` file whenever the app is built with the `azure-swa` preset. The following properties are set automatically:
+
+| Property | Value | Notes |
+|----------|-------|-------|
+| `platform.apiRuntime` | `node:16` or `node:14` | Based on your package configuration |
+| `navigationFallback.rewrite` | `/api/server` | Always set to this value |
+| `routes` | All prerendered routes | An empty `index.html` is created if none exists |
+
+## Custom configuration
+
+Override or extend the generated config using `azure.config` in `nitro.config.ts`:
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  preset: "azure-swa",
+  azure: {
+    config: {
+      // custom routes and other Azure SWA config options
+      routes: [
+        {
+          route: "/old-path",
+          redirect: "/new-path",
+          statusCode: 301,
+        },
+      ],
+    },
+  },
+});
+```
+
+Custom routes are added and matched first. If a custom route has the same `route` property as a generated route, the custom route takes precedence.
+
+## Environment variables
+
+Configure [application settings on Azure](https://docs.microsoft.com/en-us/azure/static-web-apps/application-settings) in the Azure portal to set environment variables for `runtimeConfig` values used by your Nitro application.

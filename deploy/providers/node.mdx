@@ -1,0 +1,139 @@
+---
+title: "Node.js Server"
+description: "Deploy Nitro as a Node.js HTTP server, multi-core cluster, or middleware handler."
+---
+
+Nitro provides three Node.js presets for self-hosted deployments. All three produce a standalone `.output/` directory that runs without `node_modules`.
+
+## node_server
+
+**Preset:** `node_server` (default)
+
+The default production preset. Produces a self-contained Node.js HTTP server that starts immediately.
+
+### Build and start
+
+```bash
+nitro build
+node .output/server/index.mjs
+```
+
+The server listens on `http://localhost:3000` by default.
+
+### Configuration
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  preset: "node_server",
+});
+```
+
+### Environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NITRO_PORT` / `PORT` | `3000` | Port to listen on |
+| `NITRO_HOST` / `HOST` | — | Host address to bind |
+| `NITRO_UNIX_SOCKET` | — | Path to a UNIX socket file; takes precedence over port/host |
+| `NITRO_SSL_CERT` | — | Path to SSL certificate |
+| `NITRO_SSL_KEY` | — | Path to SSL private key |
+| `NITRO_SHUTDOWN_DISABLED` | `false` | Set to `true` to disable graceful shutdown |
+| `NITRO_SHUTDOWN_SIGNALS` | `SIGINT SIGTERM` | Space-separated list of signals that trigger shutdown |
+| `NITRO_SHUTDOWN_TIMEOUT` | `30000` | Milliseconds to wait before forcing shutdown |
+| `NITRO_SHUTDOWN_FORCE` | `true` | When `true`, calls `process.exit()` at end of shutdown sequence |
+
+<Note>
+For production, terminate SSL at a reverse proxy such as nginx or Cloudflare rather than configuring `NITRO_SSL_CERT` and `NITRO_SSL_KEY` directly.
+</Note>
+
+---
+
+## node_cluster
+
+**Preset:** `node_cluster`
+
+Spawns one worker process per available CPU core using Node.js's built-in `cluster` module. Use this when you need to maximize throughput on multi-core machines.
+
+### Build and start
+
+```bash
+NITRO_PRESET=node_cluster nitro build
+node .output/server/index.mjs
+```
+
+### Configuration
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  preset: "node_cluster",
+});
+```
+
+### Additional environment variables
+
+Supports all `node_server` environment variables, plus:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NITRO_CLUSTER_WORKERS` | Number of CPU cores | Number of worker processes to spawn |
+
+---
+
+## node_middleware
+
+**Preset:** `node_middleware`
+
+Exports a raw Node.js `IncomingMessage`/`ServerResponse` listener instead of starting a server. Use this to embed Nitro inside an existing Node.js HTTP server or framework.
+
+### Build
+
+```bash
+NITRO_PRESET=node_middleware nitro build
+```
+
+### Usage
+
+The `.output/server/index.mjs` module exports a `listener` function compatible with Node's `http.createServer`:
+
+```javascript
+import { createServer } from "node:http";
+import { listener } from "./.output/server";
+
+const server = createServer(listener);
+server.listen(8080);
+```
+
+You can also use it with frameworks that accept a Node.js request listener, such as Express or Fastify (via the `middie` plugin).
+
+### Configuration
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  preset: "node_middleware",
+});
+```
+
+---
+
+## Deploying the output
+
+All three presets produce a self-contained `.output/` directory. Copy the entire directory to your server and start the process:
+
+```bash
+# On the remote server
+node .output/server/index.mjs
+```
+
+Use a process manager such as PM2 or systemd to keep the server running:
+
+```bash
+# PM2 example
+pm2 start .output/server/index.mjs --name my-app
+pm2 save
+```

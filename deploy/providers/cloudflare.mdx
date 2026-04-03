@@ -1,0 +1,355 @@
+---
+title: "Cloudflare"
+description: "Deploy Nitro apps to Cloudflare Workers or Cloudflare Pages."
+---
+
+Nitro supports two Cloudflare deployment targets: Cloudflare Workers (recommended) and Cloudflare Pages.
+
+## Cloudflare Workers
+
+**Preset:** `cloudflare_module`
+
+<Note>
+Zero-config detection is supported. Nitro automatically uses this preset when it detects a Cloudflare Workers build environment.
+</Note>
+
+<Warning>
+Workers with Static Assets require a `compatibilityDate` of `2024-09-19` or later.
+</Warning>
+
+### Configuration
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  compatibilityDate: "2024-09-19",
+  preset: "cloudflare_module",
+  cloudflare: {
+    deployConfig: true,
+    nodeCompat: true,
+  },
+});
+```
+
+Setting `deployConfig: true` causes Nitro to automatically generate a `wrangler.json` file with the correct configuration at build time.
+
+To add Cloudflare-specific configuration such as bindings, you have two options:
+
+- Set options inside `cloudflare.wrangler` in `nitro.config.ts`. This accepts the same shape as `wrangler.json`.
+- Provide your own `wrangler.json` at the project root. Nitro merges it with the auto-generated config and updates the output path references.
+
+### Deploy
+
+<Steps>
+  <Step title="Install Wrangler">
+    ```bash
+    npm install -D wrangler
+    ```
+  </Step>
+  <Step title="Build the application">
+    ```bash
+    nitro build
+    ```
+  </Step>
+  <Step title="Preview locally">
+    ```bash
+    npx wrangler dev
+    ```
+  </Step>
+  <Step title="Log in to Cloudflare">
+    ```bash
+    npx wrangler login
+    ```
+  </Step>
+  <Step title="Deploy">
+    ```bash
+    npx wrangler deploy
+    ```
+  </Step>
+</Steps>
+
+### Scheduled tasks (Cron Triggers)
+
+When using [Nitro tasks](/tasks) with `scheduledTasks`, Nitro automatically generates [Cron Triggers](https://developers.cloudflare.com/workers/configuration/cron-triggers/) in the wrangler config at build time. No manual wrangler configuration is required.
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  preset: "cloudflare_module",
+  experimental: {
+    tasks: true,
+  },
+  scheduledTasks: {
+    "* * * * *": ["cms:update"],
+    "0 15 1 * *": ["db:cleanup"],
+  },
+  cloudflare: {
+    deployConfig: true,
+  },
+});
+```
+
+### Runtime hooks
+
+Extend Cloudflare Worker handlers using [Nitro runtime hooks](/plugins):
+
+- `cloudflare:scheduled` — [Scheduled handler](https://developers.cloudflare.com/workers/runtime-apis/handlers/scheduled/)
+- `cloudflare:email` — [Email routing handler](https://developers.cloudflare.com/email-routing/email-workers/runtime-api/)
+- `cloudflare:queue` — [Queue consumer handler](https://developers.cloudflare.com/queues/configuration/javascript-apis/#consumer)
+- `cloudflare:tail` — [Tail handler](https://developers.cloudflare.com/workers/runtime-apis/handlers/tail/)
+- `cloudflare:trace` — Trace handler
+
+### Additional exports
+
+Create an `exports.cloudflare.ts` file in your project root to add extra handlers or properties to the Worker entrypoint:
+
+```typescript exports.cloudflare.ts
+export class MyWorkflow extends WorkflowEntrypoint {
+  async run(event: WorkflowEvent, step: WorkflowStep) {
+    // ...
+  }
+}
+```
+
+Nitro detects this file automatically and includes its exports in the final bundle.
+
+<Warning>
+The `exports.cloudflare.ts` file must not have a default export.
+</Warning>
+
+To use a custom path for the exports file:
+
+```typescript nitro.config.ts
+export default defineNitroConfig({
+  cloudflare: {
+    exports: "custom-exports-entry.ts",
+  },
+});
+```
+
+### Wrangler environments
+
+If you use multiple Wrangler environments, specify which one to use during local dev emulation:
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  preset: "cloudflare_module",
+  cloudflare: {
+    dev: {
+      environment: "preview",
+    },
+  },
+});
+```
+
+---
+
+## Cloudflare Pages
+
+**Preset:** `cloudflare_pages`
+
+<Note>
+Zero-config detection is supported for Cloudflare Pages.
+</Note>
+
+<Warning>
+Cloudflare Workers (`cloudflare_module`) is the recommended preset for new deployments. Use Cloudflare Pages only if you need Pages-specific features.
+</Warning>
+
+### Configuration
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  preset: "cloudflare_pages",
+  cloudflare: {
+    deployConfig: true,
+    nodeCompat: true,
+  },
+});
+```
+
+Nitro automatically generates a `_routes.json` file that controls which routes are served from static files and which invoke the Worker. Override this with the `cloudflare.pages.routes` config option.
+
+### Deploy
+
+<Steps>
+  <Step title="Build the application">
+    ```bash
+    nitro build
+    ```
+  </Step>
+  <Step title="Preview locally">
+    ```bash
+    npx wrangler pages dev
+    ```
+  </Step>
+  <Step title="Log in to Cloudflare">
+    ```bash
+    npx wrangler login
+    ```
+  </Step>
+  <Step title="Deploy">
+    ```bash
+    npx wrangler pages deploy
+    ```
+  </Step>
+</Steps>
+
+---
+
+## GitHub Actions CI/CD
+
+Both Workers and Pages can be deployed from GitHub Actions using the [Wrangler GitHub Action](https://github.com/marketplace/actions/deploy-to-cloudflare-workers-with-wrangler).
+
+<Note>
+Set the `NITRO_PRESET` environment variable in your workflow to ensure the correct preset is used during the CI build, even for zero-config providers.
+</Note>
+
+---
+
+## Environment variables
+
+Access environment variables inside event handlers using `process.env`, `import.meta.env`, or `useRuntimeConfig()`:
+
+```typescript
+import { defineHandler } from "nitro";
+import { useRuntimeConfig } from "nitro/runtime-config";
+
+export default defineHandler((event) => {
+  useRuntimeConfig().helloThere;
+  useRuntimeConfig().secret;
+  process.env.NITRO_HELLO_THERE;
+  import.meta.env.SECRET;
+});
+```
+
+<Warning>
+Only access environment variables inside the event lifecycle. Cloudflare makes them available only during the request lifecycle, not in module-level global scope.
+</Warning>
+
+### Development
+
+Use a `.env` or `.env.local` file for local development:
+
+```ini .env
+NITRO_HELLO_THERE="captain"
+SECRET="top-secret"
+```
+
+### Local preview with Wrangler
+
+For `wrangler dev` / `wrangler pages dev`, create a `.dev.vars` file (identical to your `.env`):
+
+```ini .dev.vars
+NITRO_HELLO_THERE="captain"
+SECRET="top-secret"
+```
+
+<Note>
+Add `.env`, `.env.local`, and `.dev.vars` to your `.gitignore` to avoid committing secrets.
+</Note>
+
+### Via wrangler config
+
+<Warning>
+Do not store sensitive secrets in `wrangler.toml` / `wrangler.json`. Use the Cloudflare dashboard or `wrangler secret` for secrets.
+</Warning>
+
+<CodeGroup>
+
+```toml wrangler.toml
+[vars]
+NITRO_HELLO_THERE="general"
+SECRET="secret"
+
+[env.production.vars]
+NITRO_HELLO_THERE="captain"
+SECRET="top-secret"
+```
+
+```json wrangler.json
+{
+  "vars": {
+    "NITRO_HELLO_THERE": "general",
+    "SECRET": "secret"
+  },
+  "env": {
+    "production": {
+      "vars": {
+        "NITRO_HELLO_THERE": "captain",
+        "SECRET": "top-secret"
+      }
+    }
+  }
+}
+```
+
+</CodeGroup>
+
+---
+
+## Cloudflare bindings (KV, D1, and more)
+
+Bindings let you interact with Cloudflare platform resources such as KV namespaces and D1 databases.
+
+<Tip>
+Prefer Nitro's high-level [KV Storage](/storage) and [Database](/database) APIs over accessing bindings directly. This keeps your code portable across providers.
+</Tip>
+
+Access bindings from the request event at `event.req.runtime.cloudflare.env`:
+
+```typescript
+import { defineHandler } from "nitro";
+
+export default defineHandler(async (event) => {
+  const { env } = event.req.runtime.cloudflare;
+  const stmt = await env.MY_D1.prepare("SELECT id FROM table");
+  const { results } = await stmt.all();
+});
+```
+
+### Defining bindings for local dev
+
+Add bindings to a `wrangler.toml` or `wrangler.json` file:
+
+<CodeGroup>
+
+```toml wrangler.toml
+[vars]
+MY_VARIABLE="my-value"
+
+[[kv_namespaces]]
+binding = "MY_KV"
+id = "xxx"
+```
+
+```json wrangler.json
+{
+  "vars": {
+    "MY_VARIABLE": "my-value"
+  },
+  "kv_namespaces": [
+    {
+      "binding": "MY_KV",
+      "id": "xxx"
+    }
+  ]
+}
+```
+
+</CodeGroup>
+
+Then install Wrangler and start your dev server:
+
+```bash
+npm install -D wrangler
+nitro dev
+```
+
+Bindings defined in the wrangler config are available inside your handlers during development.

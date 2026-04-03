@@ -1,0 +1,205 @@
+---
+title: "Lifecycle"
+description: "Understand how Nitro starts up, handles requests, and shuts down — and how to hook into each phase."
+---
+
+Nitro's lifecycle has two dimensions: the **server lifecycle** (startup and shutdown) and the **request lifecycle** (everything that happens for a single incoming request). Both are extensible through [plugins](/plugins).
+
+## Server lifecycle
+
+### Startup
+
+When the Nitro server starts, it initializes the application instance and synchronously runs all plugins in filename order. Plugin functions receive the `nitroApp` context and register their hooks before any request is handled.
+
+```typescript plugins/startup.ts
+import { definePlugin } from "nitro";
+
+export default definePlugin((nitroApp) => {
+  // This code runs once at startup
+  console.log("Server started");
+
+  nitroApp.hooks.hook("request", (event) => {
+    // This hook is now registered and will run for each request
+    console.log("Incoming request:", event.path);
+  });
+});
+```
+
+<Note>
+  Plugin functions must be synchronous. The hooks they register can be async.
+</Note>
+
+### Shutdown
+
+When the server is shutting down, the `close` hook fires. Nitro waits for any pending tasks initiated by `event.waitUntil` before fully terminating.
+
+```typescript plugins/cleanup.ts
+import { definePlugin } from "nitro";
+
+export default definePlugin((nitroApp) => {
+  nitroApp.hooks.hook("close", async () => {
+    // Release database connections, flush queues, etc.
+    console.log("Shutting down gracefully");
+  });
+});
+```
+
+## Request lifecycle
+
+A request moves through the following layers in order. Any layer can terminate the request by returning a response (or throwing an error).
+
+<Steps>
+  <Step title="request hook">
+    The first code to run for every incoming request. Registered via a plugin:
+
+    ```typescript plugins/request-hook.ts
+    import { definePlugin } from "nitro";
+
+    export default definePlugin((nitroApp) => {
+      nitroApp.hooks.hook("request", (event) => {
+        console.log(`Incoming request on ${event.path}`);
+      });
+    });
+    ```
+
+    <Note>
+      Errors thrown inside the `request` hook are captured by the `error` hook and do not terminate the request pipeline.
+    </Note>
+  </Step>
+
+  <Step title="Static assets">
+    When static asset serving is enabled (the default for most presets), Nitro checks whether the request matches a file in the `public/` directory **before** any middleware or route handler runs.
+
+    If a match is found, the static file is served immediately with appropriate `Content-Type`, `ETag`, `Last-Modified`, and `Cache-Control` headers. The request is terminated and no further middleware or routes execute.
+
+    Static assets also support content negotiation for pre-compressed files (gzip, brotli, zstd) via the `Accept-Encoding` header.
+  </Step>
+
+  <Step title="Route rules">
+    Matching route rules from the Nitro config execute as middleware. Most route rules alter the response without terminating it — for example, adding a header or setting a cache policy.
+
+    ```typescript nitro.config.ts
+    import { defineNitroConfig } from "nitro/config";
+
+    export default defineNitroConfig({
+      routeRules: {
+        "/**": { headers: { "x-nitro": "true" } },
+      },
+    });
+    ```
+
+    See [routing — route rules](/routing#route-rules) for all available options.
+  </Step>
+
+  <Step title="Global middleware">
+    All middleware in the `middleware/` directory runs in filename order.
+
+    ```typescript middleware/info.ts
+    import { defineHandler } from "nitro";
+
+    export default defineHandler((event) => {
+      event.context.info = { name: "Nitro" };
+    });
+    ```
+
+    <Warning>
+      Returning a value from middleware closes the request immediately. Further handlers will not execute. This should be avoided unless intentional.
+    </Warning>
+
+    See [routing — middleware](/routing#middleware) for details on ordering and request filtering.
+  </Step>
+
+  <Step title="Routed middleware">
+    Middleware targeting a specific route pattern (defined via the `handlers` config with `middleware: true` and a `route`) runs after global middleware but before the matched route handler.
+  </Step>
+
+  <Step title="Route handler">
+    Nitro matches the request against routes defined in the `routes/` directory.
+
+    ```typescript routes/api/hello.ts
+    import { defineHandler } from "nitro";
+
+    export default defineHandler((event) => {
+      return { hello: "world" };
+    });
+    ```
+
+    If a `serverEntry` is configured, it acts as a catch-all (`/**`) handler for any request not matched by a more specific route.
+
+    See [routing — filesystem routing](/routing#filesystem-routing) for route definition details.
+  </Step>
+
+  <Step title="Renderer">
+    If no route is matched, Nitro falls back to the renderer — a defined or auto-detected handler that generates a final response.
+
+    See [renderer](/renderer) for details.
+  </Step>
+
+  <Step title="response hook">
+    After the response is created from any of the layers above, the `response` hook fires. It receives the final `Response` object and the event and can inspect or modify headers before the response is sent.
+
+    ```typescript plugins/response-hook.ts
+    import { definePlugin } from "nitro";
+
+    export default definePlugin((nitroApp) => {
+      nitroApp.hooks.hook("response", (res, event) => {
+        console.log(`Response ${res.status} for ${event.path}`);
+      });
+    });
+    ```
+
+    <Note>
+      The `response` hook runs for every response, including static assets, middleware-terminated requests, and error responses.
+    </Note>
+  </Step>
+</Steps>
+
+## Error handling
+
+When an error occurs at any point in the request lifecycle, Nitro:
+
+1. Calls the `error` hook with the error and a context object (including the event and source tags).
+2. Passes the error to the **error handler**, which converts it into an HTTP response.
+
+```typescript plugins/errors.ts
+import { definePlugin } from "nitro";
+
+export default definePlugin((nitroApp) => {
+  nitroApp.hooks.hook("error", (error, context) => {
+    console.error("Captured error:", error);
+    // context.event — the H3 event (if available)
+    // context.tags  — source tags like "request", "response", "plugin"
+  });
+});
+```
+
+Errors are tracked per-request in `event.req.context.nitro.errors` for inspection in later hooks.
+
+Unhandled promise rejections and uncaught exceptions at the process level are also captured into the `error` hook with the tags `"unhandledRejection"` and `"uncaughtException"`.
+
+### Custom error handler
+
+Provide a custom error handler in the Nitro config to control error response formatting:
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  errorHandler: "~/error",
+});
+```
+
+## Hooks reference
+
+All runtime hooks are registered through [plugins](/plugins) using `nitroApp.hooks.hook()`.
+
+| Hook | Signature | When it runs |
+|------|-----------|-------------|
+| `request` | `(event: HTTPEvent) => void \| Promise<void>` | Start of each request, before routing |
+| `response` | `(res: Response, event: HTTPEvent) => void \| Promise<void>` | After the response is created, before it is sent |
+| `error` | `(error: Error, context: { event?, tags? }) => void` | When any error is captured during the lifecycle |
+| `close` | `() => void` | When the Nitro server is shutting down |
+
+<Note>
+  The `NitroRuntimeHooks` interface is augmentable. Deployment presets (such as Cloudflare) can extend it with platform-specific hooks.
+</Note>

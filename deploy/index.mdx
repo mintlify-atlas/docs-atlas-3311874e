@@ -1,0 +1,123 @@
+---
+title: "Deploy Overview"
+description: "Learn how to deploy Nitro apps to any hosting provider using deployment presets."
+---
+
+Nitro generates different output formats from the same codebase, making it suitable for any hosting provider. Built-in deployment presets adjust the output format with almost no additional code or configuration.
+
+## How presets work
+
+A deployment preset is a named configuration that tells Nitro how to build and package your application for a specific hosting environment. When you run `nitro build`, Nitro produces a self-contained `.output/` directory shaped for the target provider.
+
+The default preset is `node_server`, which outputs a standard Node.js HTTP server. Other presets produce Cloudflare Workers bundles, serverless function packages, static site exports, and more.
+
+## Setting a preset
+
+**Via environment variable** (recommended for CI/CD):
+
+```bash
+NITRO_PRESET=cloudflare_pages nitro build
+```
+
+**Via CLI argument:**
+
+```bash
+nitro build --preset cloudflare_pages
+```
+
+**Via `nitro.config.ts`:**
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  preset: "cloudflare_pages",
+});
+```
+
+## The `.output/` directory
+
+After a successful build, Nitro writes all output to `.output/`:
+
+```
+.output/
+├── server/         # Server entry point and bundled handler
+│   └── index.mjs   # (or index.ts for Deno presets)
+├── public/         # Static assets served directly by the CDN/server
+└── nitro.json      # Build metadata
+```
+
+The entire `.output/` directory is self-contained. Deploy it to your hosting provider without needing `node_modules`.
+
+## Zero-config providers
+
+When deploying via CI/CD, Nitro auto-detects the provider environment and applies the right preset automatically. No extra configuration required for:
+
+- [AWS Amplify](/deploy/providers/aws)
+- [Azure Static Web Apps](/deploy/providers/azure)
+- [Cloudflare Workers & Pages](/deploy/providers/cloudflare)
+- [Firebase App Hosting](/deploy/providers/firebase)
+- [Netlify](/deploy/providers/netlify)
+- [StormKit](/deploy/providers/other)
+- [Vercel](/deploy/providers/vercel)
+- [Zeabur](/deploy/providers/other)
+
+<Warning>
+For Turborepo users, zero-config detection may be blocked by Strict Environment Mode. Explicitly allowlist the required environment variables or use Loose Environment Mode (`--env-mode=loose`).
+</Warning>
+
+## Compatibility dates
+
+Deployment providers regularly update their runtime behavior. Nitro uses compatibility dates to let you lock in behavior at project creation time and opt in to future updates when you're ready.
+
+When you create a new project, set `compatibilityDate` to the current date:
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  compatibilityDate: "2024-09-19",
+  preset: "cloudflare_module",
+});
+```
+
+Update the compatibility date periodically and test your deployment thoroughly after each update.
+
+## Deployment targets
+
+<CardGroup cols={2}>
+  <Card title="Node.js" icon="server" href="/deploy/providers/node">
+    Deploy as a Node.js HTTP server, cluster, or middleware handler.
+  </Card>
+  <Card title="Bun" icon="zap" href="/deploy/providers/bun">
+    Run with the Bun runtime for optimized performance.
+  </Card>
+  <Card title="Deno" icon="shield" href="/deploy/providers/deno">
+    Deploy to Deno runtime or Deno Deploy.
+  </Card>
+  <Card title="Cloudflare" icon="cloud" href="/deploy/providers/cloudflare">
+    Deploy to Cloudflare Workers or Cloudflare Pages.
+  </Card>
+  <Card title="Vercel" icon="triangle" href="/deploy/providers/vercel">
+    Deploy to Vercel with serverless functions and edge support.
+  </Card>
+  <Card title="Netlify" icon="globe" href="/deploy/providers/netlify">
+    Deploy to Netlify Functions or Edge Functions.
+  </Card>
+  <Card title="AWS Lambda" icon="box" href="/deploy/providers/aws">
+    Deploy to AWS Lambda as a serverless function handler.
+  </Card>
+  <Card title="Azure" icon="microsoft" href="/deploy/providers/azure">
+    Deploy to Azure Static Web Apps.
+  </Card>
+  <Card title="Firebase" icon="flame" href="/deploy/providers/firebase">
+    Deploy to Firebase App Hosting or Cloud Functions.
+  </Card>
+  <Card title="Other providers" icon="ellipsis" href="/deploy/providers/other">
+    DigitalOcean, Heroku, Render, Railway, Koyeb, and many more.
+  </Card>
+</CardGroup>
+
+## Runtime environments
+
+For running Nitro with a specific JavaScript runtime rather than a managed cloud provider, see the [Runtime Environments](/deploy/runtimes) guide.

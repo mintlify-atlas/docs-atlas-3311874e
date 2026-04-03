@@ -1,0 +1,760 @@
+---
+title: "Other Providers"
+description: "Deploy Nitro apps to DigitalOcean, Heroku, Render, Koyeb, Zeabur, Zerops, Stormkit, Cleavr, Genezio, Zephyr, Flightcontrol, Alwaysdata, Platform.sh, IIS, GitHub Pages, GitLab Pages, and more."
+---
+
+Nitro includes presets for a wide range of additional hosting providers. Each provider below lists the preset name and the steps required to get your application running.
+
+<AccordionGroup>
+
+  <Accordion title="DigitalOcean — digital_ocean">
+
+**Preset:** `digital_ocean`
+
+<Steps>
+  <Step title="Create a DigitalOcean app">
+    Create a new app following the [DigitalOcean App Platform guide](https://docs.digitalocean.com/products/app-platform/how-to/create-apps/).
+  </Step>
+  <Step title="Set the preset environment variable">
+    In your app settings, add an app-level environment variable:
+
+    ```bash
+    NITRO_PRESET=digital_ocean
+    ```
+  </Step>
+  <Step title="Set the Node.js version">
+    Add an `engines.node` field to `package.json` to ensure a supported Node.js version:
+
+    ```json package.json
+    {
+      "engines": {
+        "node": "20.x"
+      }
+    }
+    ```
+  </Step>
+  <Step title="Add a start script">
+    Add a `start` script to `package.json`:
+
+    ```json package.json
+    {
+      "scripts": {
+        "start": "node .output/server/index.mjs"
+      }
+    }
+    ```
+  </Step>
+  <Step title="Configure the run command">
+    In your DigitalOcean app, go to **Components > Settings > Commands**, click **Edit**, and set the run command to `npm run start`.
+  </Step>
+</Steps>
+
+  </Accordion>
+
+  <Accordion title="Heroku — heroku">
+
+**Preset:** `heroku`
+
+### Using the Heroku CLI
+
+<Steps>
+  <Step title="Create a Heroku app">
+    ```bash
+    heroku create myapp
+    ```
+  </Step>
+  <Step title="Set the Node.js buildpack">
+    ```bash
+    heroku buildpacks:set heroku/nodejs
+    ```
+  </Step>
+  <Step title="Set the preset">
+    ```bash
+    heroku config:set NITRO_PRESET=heroku
+    ```
+  </Step>
+  <Step title="Add build and start scripts">
+    ```json package.json
+    {
+      "scripts": {
+        "build": "nitro build",
+        "start": "node .output/server/index.mjs"
+      }
+    }
+    ```
+  </Step>
+  <Step title="Push to deploy">
+    ```bash
+    git push heroku main
+    ```
+  </Step>
+</Steps>
+
+### With nginx
+
+For nginx-backed deployments using the [Heroku nginx buildpack](https://github.com/heroku/heroku-buildpack-nginx):
+
+1. Use the `node` preset in `nitro.config.ts`.
+2. Create `apprunner.mjs` that listens on the `/tmp/nginx.socket` UNIX socket:
+
+```javascript apprunner.mjs
+import { createServer } from "node:http";
+import { listener } from "./.output/server/index.mjs";
+
+const server = createServer(listener);
+server.listen("/tmp/nginx.socket");
+```
+
+3. Create a Nitro plugin to signal readiness:
+
+```typescript plugins/initServer.ts
+import fs from "fs";
+
+export default definePlugin((nitroApp) => {
+  if ((process.env.NODE_ENV || "development") !== "development") {
+    fs.openSync("/tmp/app-initialized", "w");
+  }
+});
+```
+
+4. Create a `Procfile`:
+
+```
+web: bin/start-nginx node apprunner.mjs
+```
+
+  </Accordion>
+
+  <Accordion title="Render — render_com">
+
+**Preset:** `render_com`
+
+### Via the Render dashboard
+
+<Steps>
+  <Step title="Create a new Web Service">
+    [Create a new Web Service](https://dashboard.render.com/select-repo?type=web) and select your repository.
+  </Step>
+  <Step title="Select the Node environment">
+    Ensure the **Node** environment is selected.
+  </Step>
+  <Step title="Set the start command">
+    Set the start command to `node .output/server/index.mjs`.
+  </Step>
+  <Step title="Add environment variables">
+    Click **Advanced** and add `NITRO_PRESET=render_com`. Optionally add `NODE_VERSION=20`.
+  </Step>
+  <Step title="Create the service">
+    Click **Create Web Service**.
+  </Step>
+</Steps>
+
+### Infrastructure as Code
+
+Create a `render.yaml` file at your repository root:
+
+```yaml render.yaml
+services:
+  - type: web
+    name: my-nitro-app
+    env: node
+    branch: main
+    startCommand: node .output/server/index.mjs
+    buildCommand: npx nypm install && npm run build
+    envVars:
+      - key: NITRO_PRESET
+        value: render_com
+```
+
+Then [create a Blueprint Instance](https://dashboard.render.com/select-repo?type=blueprint) from your repository.
+
+  </Accordion>
+
+  <Accordion title="Koyeb — koyeb">
+
+**Preset:** `koyeb`
+
+### Via the control panel
+
+<Steps>
+  <Step title="Create an app">
+    In the [Koyeb control panel](https://app.koyeb.com/), click **Create App**.
+  </Step>
+  <Step title="Connect your repository">
+    Choose **GitHub** as the deployment method and select your repository and branch.
+  </Step>
+  <Step title="Set the run command">
+    Under **Build and deployment settings**, set the run command to `node .output/server/index.mjs`.
+  </Step>
+  <Step title="Add the preset variable">
+    In the **Advanced** section, add `NITRO_PRESET=koyeb`.
+  </Step>
+  <Step title="Deploy">
+    Click **Deploy**.
+  </Step>
+</Steps>
+
+### Via the Koyeb CLI
+
+```bash
+koyeb app init my-app \
+  --git github.com/<YOUR_GITHUB_USERNAME>/<YOUR_REPOSITORY_NAME> \
+  --git-branch main \
+  --git-run-command "node .output/server/index.mjs" \
+  --ports 3000:http \
+  --routes /:3000 \
+  --env PORT=3000 \
+  --env NITRO_PRESET=koyeb
+```
+
+  </Accordion>
+
+  <Accordion title="Zeabur — zeabur">
+
+**Preset:** `zeabur`
+
+<Note>
+Zero-config detection is supported. Zeabur detects Nitro automatically.
+</Note>
+
+<Steps>
+  <Step title="Push to GitHub">
+    Push your code to a GitHub repository.
+  </Step>
+  <Step title="Import your project">
+    [Import your project](https://zeabur.com/docs/get-started) into Zeabur.
+  </Step>
+  <Step title="Deploy">
+    Zeabur detects Nitro and applies the correct settings. Your application is deployed automatically.
+  </Step>
+</Steps>
+
+  </Accordion>
+
+  <Accordion title="Zerops — zerops">
+
+**Preset:** `zerops` (Node.js) / `zerops-static` (static)
+
+<Warning>
+This preset is currently experimental.
+</Warning>
+
+Zerops supports both server-side and static Nitro deployments configured via a `zerops.yml` file.
+
+**Project import (`zerops-project-import.yml`):**
+
+<CodeGroup>
+
+```yaml zerops-project-import.yml (node.js)
+project:
+  name: nitro-app
+
+services:
+  - hostname: app
+    type: nodejs@20
+```
+
+```yaml zerops-project-import.yml (static)
+project:
+  name: nitro-app
+
+services:
+  - hostname: app
+    type: static
+```
+
+</CodeGroup>
+
+**Runtime config (`zerops.yml`):**
+
+<CodeGroup>
+
+```yaml zerops.yml (node.js)
+zerops:
+  - setup: app
+    build:
+      base: nodejs@20
+      envVariables:
+        NITRO_PRESET: zerops
+      buildCommands:
+        - pnpm i
+        - pnpm run build
+      deployFiles:
+        - .output
+        - package.json
+        - node_modules
+    run:
+      base: nodejs@20
+      ports:
+        - port: 3000
+          httpSupport: true
+      start: node .output/server/index.mjs
+```
+
+```yaml zerops.yml (static)
+zerops:
+  - setup: app
+    build:
+      base: nodejs@20
+      envVariables:
+        NITRO_PRESET: zerops-static
+      buildCommands:
+        - pnpm i
+        - pnpm build
+      deployFiles:
+        - .zerops/output/static/~
+    run:
+      base: static
+```
+
+</CodeGroup>
+
+Deploy using the Zerops CLI:
+
+```bash
+npx @zerops/zcli login <token>
+npx @zerops/zcli push
+```
+
+  </Accordion>
+
+  <Accordion title="StormKit — stormkit">
+
+**Preset:** `stormkit`
+
+<Note>
+Zero-config detection is supported.
+</Note>
+
+<Steps>
+  <Step title="Create a new app">
+    [Create a new app](https://app.stormkit.io/apps/new) on Stormkit.
+  </Step>
+  <Step title="Deploy">
+    Stormkit deploys automatically on push to your main branch. For the first deployment, click **Deploy now** in the Stormkit dashboard.
+  </Step>
+</Steps>
+
+  </Accordion>
+
+  <Accordion title="Cleavr — cleavr">
+
+**Preset:** `cleavr`
+
+<Note>
+Zero-config detection is supported.
+</Note>
+
+Set the preset in your config:
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  preset: "cleavr",
+});
+```
+
+Then in the Cleavr panel:
+
+<Steps>
+  <Step title="Provision a server">
+    Add a new server in your Cleavr panel.
+  </Step>
+  <Step title="Add a website">
+    Create a website, selecting **Nuxt 3** as the app type (compatible with Nitro).
+  </Step>
+  <Step title="Connect your repository">
+    In **Web App > Settings > Code Repo**, point to your project's repository.
+  </Step>
+  <Step title="Deploy">
+    Push your code changes to trigger a deployment.
+  </Step>
+</Steps>
+
+  </Accordion>
+
+  <Accordion title="Genezio — genezio">
+
+**Preset:** `genezio`
+
+<Warning>
+This preset is currently experimental.
+</Warning>
+
+<Steps>
+  <Step title="Create genezio.yaml">
+    Create a `genezio.yaml` file at your project root:
+
+    ```yaml genezio.yaml
+    name: nitro-app
+    yamlVersion: 2
+    backend:
+      path: .output/
+      language:
+        name: js
+        packageManager: npm
+      functions:
+        - name: nitroServer
+          path: server/
+          handler: handler
+          entry: index.mjs
+    ```
+  </Step>
+  <Step title="Build with the genezio preset">
+    ```bash
+    NITRO_PRESET=genezio nitro build
+    ```
+  </Step>
+  <Step title="Deploy">
+    ```bash
+    npx genezio deploy
+    ```
+  </Step>
+</Steps>
+
+Monitor your deployment from the [Genezio App Dashboard](https://app.genez.io/dashboard).
+
+  </Accordion>
+
+  <Accordion title="Zephyr Cloud — zephyr">
+
+**Preset:** `zephyr`
+
+Zephyr acts as a deployment control plane on top of either Zephyr-managed infrastructure or your own cloud integrations (BYOC model).
+
+### Deploy with the Nitro CLI
+
+```bash
+npx nitro deploy --preset zephyr
+```
+
+Nitro builds and uploads the output to Zephyr in one step using `zephyr-agent`.
+
+### Deploy during build
+
+Enable deployment as part of the build step:
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  preset: "zephyr",
+  zephyr: {
+    deployOnBuild: true,
+  },
+});
+```
+
+```bash
+nitro build
+```
+
+### CI/CD with GitHub Actions
+
+```yaml .github/workflows/deploy.yml
+name: Deploy with Zephyr
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      ZE_SECRET_TOKEN: ${{ secrets.ZEPHYR_AUTH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm run build
+```
+
+  </Accordion>
+
+  <Accordion title="Flightcontrol (AWS) — flightcontrol">
+
+**Preset:** `flightcontrol`
+
+Flightcontrol deploys Nitro applications to your own AWS account.
+
+### Via `flightcontrol.json`
+
+<Steps>
+  <Step title="Create a Flightcontrol account">
+    Sign up at [Flightcontrol](https://app.flightcontrol.dev/signup?ref=nitro) and link your AWS account.
+  </Step>
+  <Step title="Create flightcontrol.json">
+    Add a `flightcontrol.json` file at your repository root:
+
+    ```json flightcontrol.json
+    {
+      "$schema": "https://app.flightcontrol.dev/schema.json",
+      "environments": [
+        {
+          "id": "production",
+          "name": "Production",
+          "region": "us-west-2",
+          "source": {
+            "branch": "main"
+          },
+          "services": [
+            {
+              "id": "nitro",
+              "buildType": "nixpacks",
+              "name": "My Nitro site",
+              "type": "fargate",
+              "domain": "www.yourdomain.com",
+              "outputDirectory": ".output",
+              "startCommand": "node .output/server/index.mjs",
+              "cpu": 0.25,
+              "memory": 0.5
+            }
+          ]
+        }
+      ]
+    }
+    ```
+  </Step>
+  <Step title="Create a Flightcontrol project">
+    In the Flightcontrol dashboard, create a new project, select your repository, and choose the `flightcontrol.json` config type.
+  </Step>
+</Steps>
+
+  </Accordion>
+
+  <Accordion title="Alwaysdata — alwaysdata">
+
+**Preset:** `alwaysdata`
+
+<Steps>
+  <Step title="Register an account">
+    [Register](https://www.alwaysdata.com/en/register/) on alwaysdata and get a free 100 MB plan.
+  </Step>
+  <Step title="Build locally">
+    ```bash
+    NITRO_PRESET=alwaysdata nitro build
+    ```
+  </Step>
+  <Step title="Upload the app">
+    Upload the built output to your account (e.g., `$HOME/www/my-app`) via SSH, FTP, or WebDAV.
+  </Step>
+  <Step title="Create a site">
+    In the admin panel, [create a new site](https://admin.alwaysdata.com/site/add/) with these settings:
+
+    - **Type:** Node.js
+    - **Command:** `node .output/server/index.mjs`
+    - **Working directory:** `www/my-app`
+    - **Environment:** `NITRO_PRESET=alwaysdata`
+    - **Node.js version:** 20.0.0 or later
+    - **Hot restart:** `SIGHUP`
+  </Step>
+</Steps>
+
+Your app is available at `https://[account_name].alwaysdata.net`.
+
+  </Accordion>
+
+  <Accordion title="Platform.sh — platform_sh">
+
+**Preset:** `platform_sh`
+
+<Steps>
+  <Step title="Create a project on Platform.sh">
+    Create a new project and link it to your repository.
+  </Step>
+  <Step title="Add .platform.app.yaml">
+    Create `.platform.app.yaml` at your repository root:
+
+    ```yaml .platform.app.yaml
+    name: nitro-app
+    type: 'nodejs:20'
+    disk: 128
+    web:
+      commands:
+        start: "node .output/server/index.mjs"
+    build:
+      flavor: none
+    hooks:
+      build: |
+        corepack enable
+        npx nypm install
+        NITRO_PRESET=platform_sh npm run build
+    mounts:
+      '.data':
+        source: local
+        source_path: .data
+    ```
+  </Step>
+  <Step title="Push to deploy">
+    Push to your linked branch. Platform.sh builds and deploys automatically.
+  </Step>
+</Steps>
+
+  </Accordion>
+
+  <Accordion title="IIS (Windows) — iis_node / iis_handler">
+
+**Presets:** `iis_node` (IISnode) or `iis_handler` (HttpPlatformHandler)
+
+### Using IISnode
+
+**Preset:** `iis_node`
+
+<Steps>
+  <Step title="Install prerequisites">
+    - [Node.js LTS](https://nodejs.org/en/)
+    - [IISnode](https://github.com/azure/iisnode/releases)
+    - [IIS URL Rewrite Module](https://www.iis.net/downloads/microsoft/url-rewrite)
+  </Step>
+  <Step title="Configure MIME type">
+    In IIS, add `.mjs` as a MIME type with content type `application/javascript`.
+  </Step>
+  <Step title="Deploy">
+    Copy the contents of `.output/` to your IIS website root.
+  </Step>
+</Steps>
+
+### Using IIS HttpPlatformHandler
+
+**Preset:** `iis_handler`
+
+<Steps>
+  <Step title="Install prerequisites">
+    - [Node.js LTS](https://nodejs.org/en/)
+    - [IIS HttpPlatformHandler Module](https://www.iis.net/downloads/microsoft/httpplatformhandler)
+  </Step>
+  <Step title="Deploy">
+    Copy your `.output/` directory to Windows Server and create an IIS website pointing to that directory.
+  </Step>
+</Steps>
+
+### IIS config options
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  iis: {
+    mergeConfig: true,    // merge with a pre-existing web.config
+    overrideConfig: false, // override the default Nitro web.config entirely
+  },
+});
+```
+
+  </Accordion>
+
+  <Accordion title="GitHub Pages — github_pages">
+
+**Preset:** `github_pages`
+
+GitHub Pages serves only static content. Use this preset with a fully pre-rendered (static) Nitro application.
+
+<Steps>
+  <Step title="Configure GitHub Pages">
+    [Create a GitHub Pages site](https://docs.github.com/en/pages/getting-started-with-github-pages/creating-a-github-pages-site) for your repository.
+  </Step>
+  <Step title="Add the workflow file">
+    Create `.github/workflows/deploy.yml`:
+
+    ```yaml .github/workflows/deploy.yml
+    name: Deploy to GitHub Pages
+
+    on:
+      workflow_dispatch:
+      push:
+        branches:
+          - main
+
+    jobs:
+      build:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v5
+          - run: corepack enable
+          - uses: actions/setup-node@v6
+            with:
+              node-version: "18"
+          - run: npx nypm install
+          - run: npm run build
+            env:
+              NITRO_PRESET: github_pages
+          - name: Upload artifact
+            uses: actions/upload-pages-artifact@v1
+            with:
+              path: ./.output/public
+
+      deploy:
+        needs: build
+        permissions:
+          pages: write
+          id-token: write
+        environment:
+          name: github-pages
+          url: ${{ steps.deployment.outputs.page_url }}
+        runs-on: ubuntu-latest
+        steps:
+          - name: Deploy to GitHub Pages
+            id: deployment
+            uses: actions/deploy-pages@v1
+    ```
+  </Step>
+  <Step title="Push to deploy">
+    Push to `main` or trigger the workflow manually. GitHub Actions builds the static output and deploys it to GitHub Pages.
+  </Step>
+</Steps>
+
+  </Accordion>
+
+  <Accordion title="GitLab Pages — gitlab_pages">
+
+**Preset:** `gitlab_pages`
+
+GitLab Pages serves only static content. Use this preset with a fully pre-rendered (static) Nitro application.
+
+<Steps>
+  <Step title="Configure GitLab Pages">
+    [Set up GitLab Pages](https://docs.gitlab.com/ee/user/project/pages/#getting-started) for your project.
+  </Step>
+  <Step title="Add the CI pipeline file">
+    Create `.gitlab-ci.yml` at your repository root:
+
+    ```yaml .gitlab-ci.yml
+    image: node:lts
+    before_script:
+      - npx nypm install
+    pages:
+      cache:
+        paths:
+          - node_modules/
+      variables:
+        NITRO_PRESET: gitlab_pages
+      script:
+        - npm run build
+      artifacts:
+        paths:
+          - .output/public
+      publish: .output/public
+      rules:
+        - if: $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH
+    ```
+  </Step>
+  <Step title="Push to deploy">
+    Push to your default branch. The pipeline builds and publishes to GitLab Pages automatically.
+  </Step>
+</Steps>
+
+  </Accordion>
+
+  <Accordion title="Railway">
+
+Railway does not require a custom Nitro preset. Use the default `node_server` preset and configure your Railway service to run `node .output/server/index.mjs` as the start command.
+
+Set the build command to `npm run build` and ensure the `PORT` environment variable is forwarded (Railway sets it automatically).
+
+  </Accordion>
+
+</AccordionGroup>

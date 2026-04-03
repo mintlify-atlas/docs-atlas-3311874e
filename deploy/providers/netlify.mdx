@@ -1,0 +1,99 @@
+---
+title: "Netlify"
+description: "Deploy Nitro apps to Netlify Functions or Netlify Edge Functions."
+---
+
+Nitro supports two Netlify deployment targets: standard Netlify Functions and Netlify Edge Functions.
+
+## Netlify Functions
+
+**Preset:** `netlify`
+
+<Note>
+Zero-config detection is supported. Nitro automatically uses the `netlify` preset when it detects a Netlify build environment.
+</Note>
+
+Nitro auto-detects the Netlify build environment and applies the correct configuration. No explicit preset configuration is required for most projects.
+
+### Deploy
+
+<Steps>
+  <Step title="Connect your repository">
+    Link your Git repository to a new or existing Netlify site.
+  </Step>
+  <Step title="Verify build settings">
+    For new sites, Netlify detects Nitro and sets:
+    - **Build command:** `npm run build`
+    - **Publish directory:** `dist`
+
+    For existing sites, verify these settings in **Site configuration > Build & deploy > Continuous deployment**.
+  </Step>
+  <Step title="Push to deploy">
+    Push to your configured branch. Netlify builds and deploys automatically.
+  </Step>
+</Steps>
+
+<Note>
+Make sure the publish directory is set to `dist`.
+</Note>
+
+### Redirects
+
+Add custom redirects using [`routeRules`](/configuration) in `nitro.config.ts`, or by placing a [`_redirects`](https://docs.netlify.com/routing/redirects/#syntax-for-the-redirects-file) file in your `public/` directory.
+
+### Custom deploy configuration
+
+Use the `netlify` key in `nitro.config.ts` to provide additional deploy configuration. Nitro merges it with the auto-generated config.
+
+Currently the supported option is `images.remote_images` for configuring [Netlify Image CDN](https://docs.netlify.com/image-cdn/create-integration/):
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  netlify: {
+    images: {
+      remote_images: ["https://example.com/.*"],
+    },
+  },
+});
+```
+
+---
+
+## Netlify Edge Functions
+
+**Preset:** `netlify_edge`
+
+Netlify Edge Functions run on Deno and the V8 JavaScript runtime, executing at the edge closest to your users for the fastest possible response times.
+
+<Note>
+Make sure the publish directory is set to `dist` when creating a new project with the edge preset.
+</Note>
+
+### Configuration
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  preset: "netlify_edge",
+});
+```
+
+### Deploy
+
+<Steps>
+  <Step title="Set the preset">
+    Set `NITRO_PRESET=netlify_edge` as an environment variable in your Netlify site settings, or configure it in `nitro.config.ts`.
+  </Step>
+  <Step title="Connect your repository">
+    Link your Git repository to your Netlify site.
+  </Step>
+  <Step title="Verify build settings">
+    Confirm the publish directory is `dist`.
+  </Step>
+  <Step title="Push to deploy">
+    Push to your configured branch to trigger a build and deploy.
+  </Step>
+</Steps>

@@ -1,0 +1,206 @@
+---
+title: "Assets"
+description: "Serve static files from the public/ directory and access server-side assets bundled into the Nitro server."
+---
+
+Nitro supports two types of assets: **public assets** served directly to clients, and **server assets** bundled into the server for programmatic access.
+
+<CardGroup cols={2}>
+  <Card title="Public assets" icon="globe">
+    Files in `public/` are served as static files directly to the browser with automatic caching headers.
+  </Card>
+  <Card title="Server assets" icon="server">
+    Files in `assets/` are bundled into the server and accessed programmatically via the storage layer.
+  </Card>
+</CardGroup>
+
+## Public assets
+
+All files in the `public/` directory are automatically served as static files. No special configuration is required.
+
+```
+public/
+  image.png     <-- /image.png
+  video.mp4     <-- /video.mp4
+  robots.txt    <-- /robots.txt
+```
+
+### Caching and headers
+
+Public assets are served with automatic `ETag` and `Last-Modified` headers to support conditional requests. When a client sends `If-None-Match` or `If-Modified-Since`, Nitro returns `304 Not Modified` without re-sending the body.
+
+Nitro's static file handler reads these headers and handles content negotiation internally:
+
+```typescript
+// From src/runtime/internal/static.ts
+const ifNotMatch = event.req.headers.get("if-none-match") === asset.etag;
+if (ifNotMatch) {
+  event.res.status = 304;
+  event.res.statusText = "Not Modified";
+  return "";
+}
+```
+
+For assets served from a non-root `baseURL` (e.g., `/build/`), if the request matches the base path but the file is not found, Nitro returns `404` immediately and does not fall through to application handlers.
+
+### Production build
+
+At build time, the `public/` directory is copied to `.output/public/` and a manifest with metadata is embedded in the server bundle. This allows Nitro to serve assets with accurate caching headers without scanning the filesystem at runtime.
+
+```json
+{
+  "/image.png": {
+    "type": "image/png",
+    "etag": "\"4a0c-6utWq0Kbk5OqDmksYCa9XV8irnM\"",
+    "mtime": "2023-03-04T21:39:45.086Z",
+    "size": 18956
+  },
+  "/robots.txt": {
+    "type": "text/plain; charset=utf-8",
+    "etag": "\"8-hMqyDrA8fJ0R904zgEPs3L55Jls\"",
+    "mtime": "2023-03-04T21:39:45.086Z",
+    "size": 8
+  },
+  "/video.mp4": {
+    "type": "video/mp4",
+    "etag": "\"9b943-4UwfQXKUjPCesGPr6J5j7GzNYGU\"",
+    "mtime": "2023-03-04T21:39:45.085Z",
+    "size": 637251
+  }
+}
+```
+
+### Custom public asset directories
+
+Add extra public asset directories via the `publicAssets` config option.
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  publicAssets: [
+    {
+      baseURL: "build",
+      dir: "public/build",
+      maxAge: 3600,
+    },
+  ],
+});
+```
+
+In this example, files in `public/build/` are served under `/build/` with a one-hour cache. Because the `baseURL` is not `"/"`, requests for missing files return `404` immediately without falling through to application handlers.
+
+Each entry in `publicAssets` supports the following options:
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `dir` | `string` | Path to the directory, resolved relative to `rootDir` |
+| `baseURL` | `string` | URL prefix for serving assets (default: `"/"`) |
+| `maxAge` | `number` | Cache `max-age` in seconds — sets `Cache-Control: public, max-age=<value>, immutable` |
+| `fallthrough` | `boolean` | Whether missing assets fall through to application handlers. Defaults to `true` for root (`"/"`) directories and `false` for non-root directories |
+| `ignore` | `false \| string[]` | Pass `false` to disable ignore patterns, or an array of globs to override the global `ignore` option |
+
+### Compressed public assets
+
+Nitro can pre-compress public assets during the build. Supported encodings are gzip (`.gz`), brotli (`.br`), and zstd (`.zst`). When a client sends `Accept-Encoding`, Nitro serves the matching compressed file if available.
+
+<Tabs>
+  <Tab title="All encodings">
+    ```typescript nitro.config.ts
+    import { defineNitroConfig } from "nitro/config";
+
+    export default defineNitroConfig({
+      compressPublicAssets: true,
+    });
+    ```
+  </Tab>
+  <Tab title="Specific encodings">
+    ```typescript nitro.config.ts
+    import { defineNitroConfig } from "nitro/config";
+
+    export default defineNitroConfig({
+      compressPublicAssets: {
+        gzip: true,
+        brotli: true,
+        zstd: false,
+      },
+    });
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+  Only compressible MIME types (text, JavaScript, JSON, XML, WASM, fonts, SVG, etc.) with a file size of at least 1 KB are compressed. Source map files (`.map`) are excluded.
+</Note>
+
+## Server assets
+
+Files in the `assets/` directory are bundled into the server and accessed via the [storage layer](/storage) at the `assets/server` mount point.
+
+```
+assets/
+  data.json     <-- accessible via useStorage("assets/server").getItem("data.json")
+  config.yaml   <-- accessible via useStorage("assets/server").getItem("config.yaml")
+```
+
+### Accessing server assets
+
+Use `useStorage` with the `assets/server` base to retrieve server asset files from a route handler.
+
+```typescript routes/data.ts
+import { defineHandler } from "nitro";
+import { useStorage } from "nitro/storage";
+
+export default defineHandler(async () => {
+  const serverAssets = useStorage("assets/server");
+  const keys = await serverAssets.getKeys();
+  const data = await serverAssets.getItem("data.json");
+  return { keys, data };
+});
+```
+
+### Custom server assets
+
+Define additional server asset directories using the `serverAssets` config option. Assets are accessed via `assets:<baseName>`.
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  serverAssets: [
+    {
+      baseName: "templates",
+      dir: "./templates",
+    },
+  ],
+});
+```
+
+Then retrieve your assets using the configured base name:
+
+```typescript routes/success.ts
+import { defineHandler } from "nitro";
+import { useStorage } from "nitro/storage";
+
+export default defineHandler(async (event) => {
+  const html = await useStorage("assets/templates").getItem("success.html");
+  return html;
+});
+```
+
+Each entry in `serverAssets` supports the following options:
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `baseName` | `string` | Storage mount point name — accessed via `assets/<baseName>` |
+| `dir` | `string` | Path to the directory, resolved relative to `rootDir` |
+| `pattern` | `string` | Glob pattern for file inclusion (default: `"**/*"`) |
+| `ignore` | `string[]` | Array of glob patterns to exclude files |
+
+### Asset metadata
+
+In production, server assets are bundled as lazy imports with pre-computed metadata: MIME type, ETag, and modification time. In development, assets are read directly from the filesystem using the `fs` unstorage driver.
+
+<Tip>
+  During development, changes to server assets are picked up automatically without rebuilding.
+</Tip>

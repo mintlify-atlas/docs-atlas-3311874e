@@ -1,0 +1,254 @@
+---
+title: "Server Entry"
+description: "Use a custom server entry to take control of request handling, integrate third-party frameworks, and add global middleware."
+---
+
+# Server Entry
+
+The server entry is a special handler that runs for every incoming request before routes are matched. It is the integration point for cross-cutting concerns like authentication, logging, request preprocessing, and third-party HTTP frameworks.
+
+## Auto-detected `server.ts`
+
+By default, Nitro looks for a `server.ts` file (or `.js`, `.mjs`, `.mts`, `.tsx`, `.jsx`) in your project root. When found, it is used as the server entry for all incoming requests.
+
+<Tip>
+  When `server.ts` is detected, Nitro logs: `Detected \`server.ts\` as server entry.`
+</Tip>
+
+<CodeGroup>
+```typescript server.ts
+export default {
+  async fetch(req: Request) {
+    const url = new URL(req.url);
+
+    // Handle a specific route directly
+    if (url.pathname === "/health") {
+      return new Response("OK", {
+        status: 200,
+        headers: { "content-type": "text/plain" },
+      });
+    }
+
+    // Return nothing to continue to the next handler
+  },
+};
+```
+
+```typescript routes/api/hello.ts
+import { defineHandler } from "nitro";
+
+export default defineHandler((event) => {
+  return { hello: "API" };
+});
+```
+</CodeGroup>
+
+With this setup:
+
+- `/health` → Handled by `server.ts` (returns a response immediately)
+- `/api/hello` → Handled by the route handler
+- All other routes → Server entry runs first, then falls through to the renderer
+
+---
+
+## Using `defineHandler`
+
+For better type inference and access to the H3 event object, export a `defineHandler` instead of a raw fetch handler:
+
+```typescript server.ts
+import { defineHandler } from "nitro";
+
+export default defineHandler((event) => {
+  // Attach context available to all downstream handlers
+  event.context.requestId = crypto.randomUUID();
+  event.context.timestamp = Date.now();
+
+  console.log(`[${event.context.requestId}] ${event.method} ${event.path}`);
+
+  // Return nothing to continue processing
+});
+```
+
+<Warning>
+  If your server entry returns `undefined` or nothing, the request continues to route handlers and the renderer. If it returns a response, the request lifecycle stops immediately.
+</Warning>
+
+---
+
+## Framework compatibility
+
+Any framework that exposes a standard Web `fetch(request: Request): Response` interface works directly as a `server.ts` export.
+
+### Web-compatible frameworks
+
+<Tabs>
+  <Tab title="H3">
+    ```typescript server.ts
+    import { H3 } from "h3";
+
+    const app = new H3();
+
+    app.get("/", () => "Hello from H3!");
+
+    export default app;
+    ```
+  </Tab>
+  <Tab title="Hono">
+    ```typescript server.ts
+    import { Hono } from "hono";
+
+    const app = new Hono();
+
+    app.get("/", (c) => c.text("Hello from Hono!"));
+
+    export default app;
+    ```
+  </Tab>
+  <Tab title="Elysia">
+    ```typescript server.ts
+    import { Elysia } from "elysia";
+
+    const app = new Elysia();
+
+    app.get("/", () => "Hello from Elysia!");
+
+    export default app.compile();
+    ```
+  </Tab>
+</Tabs>
+
+### Node.js frameworks
+
+For Node.js frameworks that use `(req, res)` style handlers — like Express or Fastify — name your entry file `server.node.ts`. Nitro detects the `.node.` suffix and automatically converts the Node.js handler to a web-compatible fetch handler via [srvx](https://srvx.h3.dev/).
+
+<Tabs>
+  <Tab title="Express">
+    ```typescript server.node.ts
+    import Express from "express";
+
+    const app = Express();
+
+    app.use("/", (_req, res) => {
+      res.send("Hello from Express with Nitro!");
+    });
+
+    export default app;
+    ```
+  </Tab>
+  <Tab title="Fastify">
+    ```typescript server.node.ts
+    import Fastify from "fastify";
+
+    const app = Fastify();
+
+    app.get("/", () => "Hello from Fastify with Nitro!");
+
+    await app.ready();
+
+    export default app.routing;
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Configuration
+
+### Custom entry file
+
+Specify a custom entry file path using `serverEntry` in `nitro.config.ts`:
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  serverEntry: "./nitro.server.ts",
+});
+```
+
+You can also pass an object with explicit `handler` and `format` options:
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  serverEntry: {
+    handler: "./server.ts",
+    format: "node", // "web" (default) or "node"
+  },
+});
+```
+
+### Handler format
+
+The `format` option controls how Nitro treats the default export:
+
+| Format | Handler signature | File naming convention |
+|---|---|---|
+| `"web"` (default) | `fetch(request: Request): Response` | `server.ts` |
+| `"node"` | `(req, res) => void` | `server.node.ts` |
+
+When auto-detecting, the format is determined by the filename suffix.
+
+### Disabling server entry
+
+Set `serverEntry` to `false` to disable auto-detection entirely:
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  serverEntry: false,
+});
+```
+
+---
+
+## Request lifecycle
+
+The server entry is registered as a catch-all (`/**`) route handler with lower priority than specific routes. The full request lifecycle is:
+
+```
+1. Server hook: `request`
+2. Route rules (headers, redirects, etc.)
+3. Global middleware (middleware/)
+4. Route matching:
+   a. Specific routes (routes/) — if matched, handles the request
+   b. Server entry — runs for unmatched routes
+   c. Renderer (renderer.ts or index.html)
+```
+
+When both a server entry and a renderer exist, they are chained: the server entry runs first, and if it does not return a response, the renderer handles the request.
+
+---
+
+## Development mode
+
+During development, Nitro watches for changes to your server entry file. Creating, modifying, or deleting the file automatically triggers a dev server reload.
+
+---
+
+## Best practices
+
+- Use server entry for concerns that affect **all routes** (authentication, logging, request IDs)
+- Return `undefined` to continue processing; return a `Response` to terminate the lifecycle early
+- Keep server entry logic lightweight — it runs on every request
+- Use [plugins](/plugins) for one-time initialization logic instead of server entry
+- Prefer route-specific handlers for route-specific logic; they are more performant
+
+---
+
+<CardGroup cols={2}>
+  <Card title="Renderer" href="/renderer">
+    Create a custom renderer for SSR and HTML templating.
+  </Card>
+  <Card title="Plugins" href="/plugins">
+    Run initialization logic during server startup.
+  </Card>
+  <Card title="Routing" href="/routing">
+    Define route handlers and route rules.
+  </Card>
+  <Card title="Lifecycle" href="/lifecycle">
+    Understand the full Nitro request lifecycle.
+  </Card>
+</CardGroup>

@@ -1,0 +1,53 @@
+---
+title: "Bun"
+description: "Deploy Nitro apps using the Bun runtime."
+---
+
+**Preset:** `bun`
+
+Nitro output is compatible with the [Bun](https://bun.sh) runtime. The default Node.js output can run under Bun without changes, but using the `bun` preset enables Bun-specific optimizations in the generated bundle.
+
+## Build and start
+
+Set the preset and build:
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  preset: "bun",
+});
+```
+
+```bash
+nitro build
+bun run ./.output/server/index.mjs
+```
+
+Or set the preset via environment variable:
+
+```bash
+NITRO_PRESET=bun nitro build
+bun run ./.output/server/index.mjs
+```
+
+## Deploying the output
+
+The `.output/` directory is self-contained. Copy it to any machine with Bun installed and start the server:
+
+```bash
+bun run .output/server/index.mjs
+```
+
+<Note>
+If you are deploying to a managed provider that supports Bun (such as Vercel), use that provider's preset and configure the Bun runtime through the provider's settings rather than using this preset.
+</Note>
+
+## Environment variables
+
+The Bun preset inherits the same environment variable behavior as the Node.js server preset:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NITRO_PORT` / `PORT` | `3000` | Port to listen on |
+| `NITRO_HOST` / `HOST` | — | Host address to bind |

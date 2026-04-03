@@ -1,0 +1,115 @@
+---
+title: "Deno"
+description: "Deploy Nitro apps to the Deno runtime or Deno Deploy."
+---
+
+Nitro supports two Deno deployment targets: the self-hosted Deno runtime and the managed Deno Deploy platform.
+
+## Deno runtime
+
+**Preset:** `deno_server`
+
+Run your Nitro application inside the [Deno](https://deno.com) runtime on your own infrastructure.
+
+### Build and start
+
+```bash
+NITRO_PRESET=deno_server nitro build
+deno run --unstable --allow-net --allow-read --allow-env .output/server/index.ts
+```
+
+Or configure the preset in `nitro.config.ts`:
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  preset: "deno_server",
+});
+```
+
+Then build and run:
+
+```bash
+nitro build
+deno run --unstable --allow-net --allow-read --allow-env .output/server/index.ts
+```
+
+---
+
+## Deno Deploy
+
+**Preset:** `deno_deploy`
+
+[Deno Deploy](https://deno.com/deploy) is a globally distributed serverless platform for Deno applications.
+
+### Deploy with the CLI
+
+<Steps>
+  <Step title="Obtain an access token">
+    Log in to [Deno Deploy](https://dash.deno.com/account#access-tokens) and generate a `DENO_DEPLOY_TOKEN` access token. Set it as an environment variable.
+  </Step>
+  <Step title="Build with the deno_deploy preset">
+    ```bash
+    NITRO_PRESET=deno_deploy nitro build
+    ```
+  </Step>
+  <Step title="Deploy using deployctl">
+    Run `deployctl` from the `.output/` directory:
+
+    ```bash
+    cd .output
+    deployctl deploy --project=my-project server/index.ts
+    ```
+  </Step>
+</Steps>
+
+### Deploy via GitHub Actions
+
+<Steps>
+  <Step title="Link your repository">
+    In your project settings on [Deno Deploy](https://dash.deno.com), link your GitHub repository and set the deployment mode to **GitHub Actions**.
+  </Step>
+  <Step title="Add the workflow file">
+    Create the following workflow in `.github/workflows/deno_deploy.yml`:
+
+    ```yaml .github/workflows/deno_deploy.yml
+    name: deno-deploy
+
+    on:
+      push:
+        branches:
+          - main
+      pull_request:
+        branches:
+          - main
+
+    jobs:
+      deploy:
+        steps:
+          - uses: actions/checkout@v5
+          - run: corepack enable
+          - uses: actions/setup-node@v6
+            with:
+              node-version: 18
+              cache: pnpm
+          - run: pnpm install
+          - run: pnpm build
+            env:
+              NITRO_PRESET: deno_deploy
+          - name: Deploy to Deno Deploy
+            uses: denoland/deployctl@v1
+            with:
+              project: my-project
+              entrypoint: server/index.ts
+              root: .output
+    ```
+  </Step>
+  <Step title="Push to deploy">
+    Push to `main`. The workflow builds your app and deploys it to Deno Deploy automatically.
+  </Step>
+</Steps>
+
+<Note>
+No secrets are required for this GitHub Actions setup. Deno Deploy authenticates via the repository link configured in your project settings.
+</Note>

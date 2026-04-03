@@ -1,0 +1,376 @@
+---
+title: "Migration Guide"
+description: "Migrate your project from Nitro v2 (nitropack) to Nitro v3 (nitro). Covers breaking changes, updated imports, H3 v2 API changes, and removed features."
+---
+
+# Migration Guide
+
+This guide covers the breaking changes introduced in Nitro v3 and how to update your project from Nitro v2 (`nitropack`).
+
+<Warning>
+  Nitro v3 introduces intentional backward-incompatible changes. Review all sections that apply to your project before upgrading.
+</Warning>
+
+---
+
+## Package rename: `nitropack` → `nitro`
+
+The NPM package `nitropack` (v2) has been renamed to `nitro` (v3).
+
+<Steps>
+  <Step title="Update package.json">
+    Replace the `nitropack` dependency with `nitro`:
+
+    <Tabs>
+      <Tab title="Release channel">
+        ```diff package.json
+        {
+          "dependencies": {
+        -   "nitropack": "latest"
+        +   "nitro": "latest"
+          }
+        }
+        ```
+      </Tab>
+      <Tab title="Nightly channel">
+        ```diff package.json
+        {
+          "dependencies": {
+        -   "nitropack": "latest"
+        +   "nitro": "npm:nitro-nightly"
+          }
+        }
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+  <Step title="Update all imports">
+    Search your codebase for `nitropack` and replace all instances with `nitro`:
+
+    ```diff
+    - import { defineNitroConfig } from "nitropack/config"
+    + import { defineNitroConfig } from "nitro/config"
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Minimum Node.js version: 20
+
+<Warning>
+  Nitro v3 requires Node.js 20 or higher. Node.js 18 reached end-of-life in April 2025.
+</Warning>
+
+<Steps>
+  <Step title="Check your local version">
+    ```bash
+    node --version
+    ```
+    If the output is below `v20.0.0`, install the [latest LTS release](https://nodejs.org/en/download).
+  </Step>
+  <Step title="Update CI/CD pipelines">
+    Ensure your CI/CD system runs Node.js 20 or higher. For example, in GitHub Actions:
+
+    ```yaml .github/workflows/deploy.yml
+    - uses: actions/setup-node@v4
+      with:
+        node-version: "20"
+    ```
+  </Step>
+  <Step title="Update hosting environment">
+    If your hosting provider manages the Node.js runtime, set it to Node.js 20, 22, or later.
+  </Step>
+</Steps>
+
+---
+
+## Updated subpath imports
+
+### Runtime utilities
+
+Runtime utilities have moved from `nitropack/runtime/*` to individual `nitro/*` subpath exports:
+
+```diff
+- import { useStorage } from "nitropack/runtime/storage"
++ import { useStorage } from "nitro/storage"
+```
+
+### Type imports
+
+Types are now exported exclusively from `nitro/types`:
+
+```diff
+- import { NitroRuntimeConfig } from "nitropack"
++ import { NitroRuntimeConfig } from "nitro/types"
+```
+
+### Removed subpath exports
+
+| Old import | Replacement |
+|---|---|
+| `nitropack/core`, `nitro/rollup` | `nitro/builder` |
+| `nitropack/runtime/*` | `nitro/*` |
+| `nitropack/kit` | Removed — use `NitroModule` from `nitro/types` |
+| `nitropack/presets` | Removed — use built-in Nitro presets |
+
+<Warning>
+  The experimental `nitropack/kit` package has been removed. A standalone Nitro Kit package may be introduced in the future. For now, import `NitroModule` from `nitro/types` directly.
+</Warning>
+
+---
+
+## App config support removed
+
+<Warning>
+  Nitro v2's `app.config.ts` and `useAppConfig()` have been removed in v3.
+</Warning>
+
+**Migration:** Replace `app.config.ts` with a regular TypeScript file in your server directory and import it directly:
+
+<Tabs>
+  <Tab title="Before (v2)">
+    ```typescript app.config.ts
+    export default defineAppConfig({
+      theme: { primary: "#ff0000" },
+    });
+    ```
+
+    ```typescript api/example.ts
+    export default defineHandler(() => {
+      const config = useAppConfig();
+      return config.theme;
+    });
+    ```
+  </Tab>
+  <Tab title="After (v3)">
+    ```typescript server/config.ts
+    export const config = {
+      theme: { primary: "#ff0000" },
+    };
+    ```
+
+    ```typescript api/example.ts
+    import { defineHandler } from "nitro";
+    import { config } from "../config.ts";
+
+    export default defineHandler(() => {
+      return config.theme;
+    });
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Preset changes
+
+Several presets have been renamed or removed. Update your `preset` configuration if you use any of the following:
+
+<Warning>
+  Legacy preset names from v2 are no longer accepted. Update your `nitro.config.ts` or `NITRO_PRESET` environment variable.
+</Warning>
+
+| v2 Preset | v3 Replacement |
+|---|---|
+| `node` | `node_middleware` (export changed to `middleware`) |
+| `cloudflare`, `cloudflare_worker`, `cloudflare_module_legacy` | `cloudflare_module` |
+| `deno-server-legacy` | `deno_server` (requires Deno v2) |
+| `netlify-builder` | `netlify` or `netlify_edge` |
+| `vercel-edge` | `vercel` with Fluid compute enabled |
+| `azure`, `azure_functions` | `azure_swa` |
+| `firebase` | `firebase_app_hosting` |
+| `iis` | `iis_handler` |
+| `deno` | `deno_deploy` |
+| `edgio` | Discontinued |
+| `cli` | Removed (lack of use) |
+| `service_worker` | Removed (instability) |
+
+```diff nitro.config.ts
+  import { defineNitroConfig } from "nitro/config";
+
+  export default defineNitroConfig({
+-   preset: "cloudflare_worker",
++   preset: "cloudflare_module",
+  });
+```
+
+---
+
+## Cloudflare bindings access
+
+<Warning>
+  In v3, Cloudflare environment bindings are no longer available on `event.context.cloudflare.env`.
+</Warning>
+
+The Cloudflare runtime context is now attached to the request's runtime object:
+
+```diff
+- const { cloudflare } = event.context
+- const binding = cloudflare.env.MY_BINDING
++ const { env } = event.req.runtime.cloudflare
++ const binding = env.MY_BINDING
+```
+
+---
+
+## H3 v2
+
+Nitro v3 upgrades to [H3 v2](https://h3.dev), which is rewritten on top of web standard primitives. All H3 utilities are imported from `nitro/h3`.
+
+### Handler definition
+
+```diff
+- import { eventHandler, defineEventHandler } from "nitro/h3"
++ import { defineHandler } from "nitro"
+```
+
+Other handler utilities:
+
+| v2 | v3 |
+|---|---|
+| `lazyEventHandler` | `defineLazyEventHandler` |
+| `useBase` | `withBase` |
+
+### Response handling
+
+<Warning>
+  You must explicitly `return` a value or `throw` an error. Imperative response-sending utilities from v2 have been removed.
+</Warning>
+
+```diff
+- import { send, sendRedirect, sendStream } from "nitro/h3"
+- send(event, value)
+- sendStream(event, stream)
+- sendRedirect(event, location, code)
++ import { redirect } from "nitro/h3"
++ return value
++ return stream
++ return redirect(event, location, code)
+```
+
+Other response utility changes:
+
+| v2 | v3 |
+|---|---|
+| `sendError(event, error)` | `throw createError(error)` |
+| `sendNoContent(event)` | `return noContent(event)` |
+| `sendProxy(event, target)` | `return proxy(event, target)` |
+
+### Request body
+
+Most body reading utilities can be replaced with native `Request` methods:
+
+```diff
+- import { readBody, readRawBody, readFormData } from "nitro/h3"
+- const body = await readBody(event)
++ const body = await event.req.json()
++ const text = await event.req.text()
++ const formData = await event.req.formData()
++ const stream = event.req.body
+```
+
+### Headers
+
+H3 v2 uses standard web `Headers`. Header values are always plain `string` — no `null`, `undefined`, or `string[]`:
+
+```diff
+- import { getHeader, setHeader, getResponseStatus } from "nitro/h3"
+- getHeader(event, "x-foo")
+- setHeader(event, "x-foo", "bar")
++ event.req.headers.get("x-foo")
++ event.res.headers.set("x-foo", "bar")
++ event.res.status   // instead of getResponseStatus(event)
+```
+
+### Web standard event properties
+
+H3 v2 renames and restructures the event object for web standard alignment:
+
+```diff
+- event.web      // old web request accessor
++ event.req      // instance of the web Request object
+
+- event.node.req // Node.js IncomingMessage (only available in Node.js runtime)
+- event.node.res // Node.js ServerResponse (only available in Node.js runtime)
+```
+
+### Error handling
+
+```diff
+- import { createError, isError } from "nitro/h3"
+- throw createError({ statusCode: 404, message: "Not found" })
+- if (isError(err)) { ... }
++ import { HTTPError } from "nitro"
++ throw new HTTPError({ status: 404, message: "Not found" })
++ if (HTTPError.isError(err)) { ... }
+```
+
+### Node.js adapter utilities
+
+```diff
+- import { defineNodeListener, fromNodeMiddleware, toNodeListener } from "nitro/h3"
++ import { defineNodeHandler, fromNodeHandler, toNodeHandler } from "nitro/h3"
+```
+
+---
+
+## Runtime hooks
+
+<Warning>
+  If you accessed `useNitroApp().hooks` outside of a Nitro plugin in v2, it may now be `undefined`.
+</Warning>
+
+Use the new `useNitroHooks()` utility to guarantee a hook instance is available:
+
+```diff
+- const app = useNitroApp()
+- app.hooks.hook("request", handler)
++ import { useNitroHooks } from "nitro/runtime"
++ useNitroHooks().hook("request", handler)
+```
+
+---
+
+## Quick migration checklist
+
+<Steps>
+  <Step title="Update package">
+    Replace `nitropack` with `nitro` in `package.json` and run your package manager's install command.
+  </Step>
+  <Step title="Update Node.js">
+    Verify Node.js >= 20 locally and in all CI/CD and hosting environments.
+  </Step>
+  <Step title="Find and replace imports">
+    Search for `nitropack` across your codebase and update all import paths to use `nitro/*`.
+  </Step>
+  <Step title="Update preset names">
+    Check your `nitro.config.ts` and `NITRO_PRESET` environment variable against the preset rename table.
+  </Step>
+  <Step title="Migrate H3 v2 APIs">
+    Update handler definitions, response handling, headers, and body parsing to use web standard APIs.
+  </Step>
+  <Step title="Remove app config usage">
+    Replace `app.config.ts` / `useAppConfig()` with direct module imports.
+  </Step>
+  <Step title="Update Cloudflare bindings">
+    Change `event.context.cloudflare.env` to `event.req.runtime.cloudflare.env`.
+  </Step>
+</Steps>
+
+---
+
+<CardGroup cols={2}>
+  <Card title="Configuration" href="/configuration">
+    Configuration reference for Nitro v3.
+  </Card>
+  <Card title="Routing" href="/routing">
+    Route handlers, route rules, and middleware.
+  </Card>
+  <Card title="Deploy" href="/deploy/index">
+    Updated deployment presets for v3.
+  </Card>
+  <Card title="Plugins" href="/plugins">
+    Server plugins for initialization logic.
+  </Card>
+</CardGroup>

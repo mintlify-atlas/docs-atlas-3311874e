@@ -1,0 +1,127 @@
+---
+title: "Introduction"
+description: "Nitro is a full-stack server framework that runs anywhere — filesystem routing, zero-config deploys, and seamless Vite integration."
+---
+
+Nitro gives you a production-ready server with filesystem routing, code-splitting, caching, storage, and a built-in database — all runtime-agnostic and deployable anywhere without changing your code.
+
+## What is Nitro?
+
+Create server and API routes inside a `routes/` directory. Each file maps directly to a URL path, and Nitro handles routing, code-splitting, and optimized builds automatically.
+
+```typescript routes/api/hello.ts
+import { defineHandler } from "nitro";
+
+export default defineHandler((event) => {
+  return { message: "Hello from Nitro!" };
+});
+```
+
+The file path maps directly to the route URL — `routes/api/hello.ts` becomes `/api/hello`. No router configuration needed.
+
+<Note>
+  You can also take full control of the server entry by creating a `server.ts`
+  file and using any HTTP library — [h3](https://h3.dev),
+  [Hono](https://hono.dev), [Elysia](https://elysiajs.com/), or plain Web APIs.
+</Note>
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Deploy anywhere" icon="globe" href="/deploy/index">
+    Build once, deploy to 30+ targets — Cloudflare Workers, Vercel, Netlify,
+    Node.js, Bun, Deno, and more — without changing a line of application code.
+  </Card>
+  <Card title="Filesystem routing" icon="route" href="/routing">
+    Files in `routes/` map directly to URL paths. Nitro compiles routes at
+    build time, eliminating a runtime router entirely.
+  </Card>
+  <Card title="Vite integration" icon="bolt" href="/plugins">
+    Add Nitro to any Vite project as a plugin. Get API routes, SSR, and a full
+    production server — all built together with `vite build`.
+  </Card>
+  <Card title="Runtime agnostic" icon="server">
+    Runs on Node.js, Bun, Deno, Cloudflare Workers, and edge runtimes. Use Web
+    APIs — `fetch`, `Request`, `Response` — everywhere.
+  </Card>
+</CardGroup>
+
+## Filesystem routing
+
+Routes live in the `routes/` directory. The file path determines the URL:
+
+| File | URL |
+|---|---|
+| `routes/index.ts` | `/` |
+| `routes/api/hello.ts` | `/api/hello` |
+| `routes/users/[id].ts` | `/users/:id` |
+
+Nitro compiles these at build time — no runtime router overhead. This makes it especially well-suited for serverless hosting, with near-zero cold-start times regardless of project size.
+
+<Tip>
+  See the [Routing](/routing) page for dynamic segments, catch-all routes,
+  method-specific handlers, and middleware.
+</Tip>
+
+## Deploy anywhere
+
+`nitro build` produces an optimized `.output/` folder. Point it at any supported runtime:
+
+```bash
+# Build for the current platform
+nitro build
+
+# Preview the output locally
+node .output/server/index.mjs
+```
+
+Switch deployment targets by setting the `preset` option in `nitro.config.ts` — no other code changes required. Nitro supports Cloudflare Workers, Vercel Edge Functions, Netlify Functions, AWS Lambda, Bun, Deno, and more.
+
+<Tip>
+  See [Deploy](/deploy/index) for the full list of supported providers and
+  how to configure each one.
+</Tip>
+
+## Vite integration
+
+Nitro works as a Vite plugin. Add it to any existing Vite project to get a full production server alongside your frontend:
+
+```typescript vite.config.ts
+import { defineConfig } from "vite";
+import { nitro } from "nitro/vite";
+
+export default defineConfig({
+  plugins: [nitro()],
+});
+```
+
+Running `vite build` produces an `.output/` folder containing both your frontend assets and backend server — ready to deploy anywhere as a single unit.
+
+## Built-in storage, caching, and database
+
+Nitro includes a runtime-agnostic key-value storage layer, response caching with stale-while-revalidate support, and a built-in SQL database (SQLite by default). All three use the same driver-swapping model: configure a different driver without changing your application code.
+
+- **Storage** — 20+ drivers including FS, Redis, and S3
+- **Cache** — Handler and function caching backed by storage
+- **Database** — 10+ SQL databases including Postgres and MySQL
+
+## Meta-framework foundation
+
+Nitro is the server engine behind [Nuxt](https://nuxt.com/), [SolidStart](https://start.solidjs.com/), and [TanStack Start](https://tanstack.com/start). If you're building a meta-framework, Nitro gives you a proven, extensible foundation.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Create a new Nitro project or add Nitro to an existing Vite app.
+  </Card>
+  <Card title="Routing" icon="route" href="/routing">
+    Learn filesystem routing, dynamic routes, and middleware.
+  </Card>
+  <Card title="Deploy" icon="cloud-arrow-up" href="/deploy/index">
+    Choose a deployment target and ship your server.
+  </Card>
+  <Card title="Plugins" icon="plug" href="/plugins">
+    Extend Nitro with lifecycle hooks and server plugins.
+  </Card>
+</CardGroup>

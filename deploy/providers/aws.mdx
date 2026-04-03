@@ -1,0 +1,174 @@
+---
+title: "AWS"
+description: "Deploy Nitro apps to AWS Lambda or AWS Amplify Hosting."
+---
+
+Nitro provides built-in presets for both AWS Lambda (serverless functions) and AWS Amplify Hosting (managed web hosting).
+
+## AWS Lambda
+
+**Preset:** `aws_lambda`
+
+Nitro generates output compatible with the [AWS Lambda](https://aws.amazon.com/lambda/) handler format. The entry point at `.output/server/index.mjs` exports a `handler` function matching the Lambda invocation format.
+
+### Usage
+
+The exported `handler` can be used programmatically or wired up as a Lambda function entrypoint:
+
+```typescript
+import { handler } from "./.output/server";
+
+// Invoke programmatically
+const { statusCode, headers, body } = await handler({ rawPath: "/" });
+```
+
+### Build
+
+```bash
+NITRO_PRESET=aws_lambda nitro build
+```
+
+Or set in `nitro.config.ts`:
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  preset: "aws_lambda",
+});
+```
+
+### Deploy
+
+<Steps>
+  <Step title="Build the application">
+    ```bash
+    nitro build
+    ```
+  </Step>
+  <Step title="Package the output">
+    Zip the `.output/` directory and upload it to AWS Lambda, or use a deployment tool such as the AWS CDK, SAM, or Serverless Framework.
+  </Step>
+  <Step title="Configure the handler">
+    Set the Lambda handler to `server/index.handler` pointing to the bundled entry point.
+  </Step>
+</Steps>
+
+### Inlining chunks
+
+By default, Nitro uses dynamic imports for lazy loading. For Lambda, you may prefer to inline all chunks into a single file to reduce cold start latency:
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  preset: "aws_lambda",
+  inlineDynamicImports: true,
+});
+```
+
+### Response streaming
+
+AWS Lambda supports [response streaming](https://aws.amazon.com/blogs/compute/introducing-aws-lambda-response-streaming/) for lower time-to-first-byte. Enable it with:
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  preset: "aws_lambda",
+  awsLambda: {
+    streaming: true,
+  },
+});
+```
+
+---
+
+## AWS Amplify Hosting
+
+**Preset:** `aws_amplify`
+
+<Note>
+Zero-config detection is supported. Nitro automatically uses the `aws_amplify` preset when it detects an Amplify build environment.
+</Note>
+
+[AWS Amplify Hosting](https://aws.amazon.com/amplify) provides a managed hosting environment with CI/CD, previews, and server-side rendering support.
+
+### Deploy
+
+<Steps>
+  <Step title="Open the Amplify console">
+    Go to the [AWS Amplify Hosting Console](https://console.aws.amazon.com/amplify/) and click **Get Started** under Amplify Hosting.
+  </Step>
+  <Step title="Connect your repository">
+    Authorize access to your Git provider and select the repository and branch to deploy.
+  </Step>
+  <Step title="Configure build settings">
+    Amplify auto-detects Nitro. Optionally set environment variables under the **Advanced** section.
+  </Step>
+  <Step title="Enable SSR logging (optional)">
+    Select **Enable SSR logging** to forward server-side logs to Amazon CloudWatch.
+  </Step>
+  <Step title="Save and deploy">
+    Click **Save and Deploy** to trigger the first deployment.
+  </Step>
+</Steps>
+
+### Advanced configuration
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  awsAmplify: {
+    // runtime: "nodejs20.x",  // "nodejs18.x" | "nodejs16.x" | "nodejs20.x"
+    // catchAllStaticFallback: true,
+    // imageOptimization: { path: "/_image", cacheControl: "public, max-age=3600, immutable" },
+  },
+});
+```
+
+### Custom `amplify.yml`
+
+For monorepos or advanced build configurations, provide a custom `amplify.yml`:
+
+<CodeGroup>
+
+```yaml amplify.yml
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - nvm use 18 && node --version
+        - corepack enable && npx --yes nypm install
+    build:
+      commands:
+        - npm run build
+  artifacts:
+    baseDirectory: .amplify-hosting
+    files:
+      - "**/*"
+```
+
+```yaml amplify.yml (monorepo)
+version: 1
+applications:
+  - frontend:
+      phases:
+        preBuild:
+          commands:
+            - nvm use 18 && node --version
+            - corepack enable && npx --yes nypm install
+        build:
+          commands:
+            - pnpm --filter website1 build
+      artifacts:
+        baseDirectory: apps/website1/.amplify-hosting
+        files:
+          - "**/*"
+      buildPath: /
+    appRoot: apps/website1
+```
+
+</CodeGroup>

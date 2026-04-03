@@ -1,0 +1,105 @@
+---
+title: "Firebase"
+description: "Deploy Nitro apps to Firebase App Hosting or Cloud Functions."
+---
+
+<Warning>
+You must be on the [Blaze plan](https://firebase.google.com/pricing) (Pay as you go) to deploy server-side applications with Firebase.
+</Warning>
+
+## Firebase App Hosting
+
+**Preset:** `firebase_app_hosting`
+
+<Note>
+Zero-config detection is supported. Nitro automatically uses the `firebase_app_hosting` preset when it detects a Firebase App Hosting build environment.
+</Note>
+
+[Firebase App Hosting](https://firebase.google.com/docs/app-hosting) is a managed hosting platform that integrates with your Git repository and deploys automatically on every push.
+
+### Deploy
+
+<Steps>
+  <Step title="Create a Firebase project">
+    Go to the [Firebase Console](https://console.firebase.google.com/) and create a new project, or select an existing one.
+  </Step>
+  <Step title="Set up App Hosting">
+    From the sidebar, select **Build > App Hosting** and click **Get Started**.
+  </Step>
+  <Step title="Configure the backend">
+    - Choose a region.
+    - Link your GitHub account and import your repository.
+    - Configure the project root directory and branch.
+    - Enable automatic rollouts.
+    - Choose a unique backend ID.
+  </Step>
+  <Step title="Deploy">
+    Click **Finish & Deploy**. Firebase App Hosting runs the `firebase_app_hosting` preset automatically at build time.
+  </Step>
+</Steps>
+
+When deployed through Firebase App Hosting, the preset runs automatically — no manual preset configuration is needed.
+
+## Firebase Cloud Functions
+
+**Preset:** `firebase`
+
+For deployments to Firebase Cloud Functions (Gen 1 or Gen 2), use the `firebase` preset.
+
+### Project setup
+
+Initialize Firebase in your project:
+
+```bash
+npx firebase-tools init hosting
+```
+
+Select **Cloud Functions** when prompted, then configure `firebase.json` to point to the Nitro output:
+
+```json firebase.json
+{
+  "functions": {
+    "source": ".output/server"
+  },
+  "hosting": {
+    "public": ".output/public",
+    "cleanUrls": true,
+    "rewrites": [
+      {
+        "source": "**",
+        "function": "server"
+      }
+    ]
+  }
+}
+```
+
+### Build and deploy
+
+<Steps>
+  <Step title="Build with the firebase preset">
+    ```bash
+    NITRO_PRESET=firebase nitro build
+    ```
+  </Step>
+  <Step title="Log in to Firebase">
+    ```bash
+    npx firebase-tools login
+    ```
+  </Step>
+  <Step title="Deploy">
+    ```bash
+    npx firebase-tools deploy
+    ```
+  </Step>
+</Steps>
+
+Or set the preset in `nitro.config.ts` and run `nitro build`:
+
+```typescript nitro.config.ts
+import { defineNitroConfig } from "nitro/config";
+
+export default defineNitroConfig({
+  preset: "firebase",
+});
+```

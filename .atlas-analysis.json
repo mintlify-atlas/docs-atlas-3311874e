@@ -1,23 +1,11 @@
 {
-  "$schema": "https://mintlify.com/docs.json",
-  "name": "Nitro",
+  "projectType": "framework",
+  "projectName": "Nitro",
+  "projectDescription": "A next-generation, runtime-agnostic server framework for building and deploying universal JavaScript servers anywhere.",
   "theme": "luma",
-  "colors": {
-    "primary": "#F97316",
-    "light": "#FED7AA",
-    "dark": "#C2410C"
-  },
-  "navbar": {
-    "primary": {
-      "type": "github",
-      "href": "https://github.com/nitrojs/nitro"
-    }
-  },
-  "footer": {
-    "socials": {
-      "github": "https://github.com/nitrojs/nitro"
-    }
-  },
+  "primaryColor": "#F97316",
+  "lightColor": "#FED7AA",
+  "darkColor": "#C2410C",
   "navigation": {
     "tabs": [
       {
@@ -98,5 +86,42 @@
         ]
       }
     ]
-  }
+  },
+  "keyFeatures": [
+    "Filesystem-based routing with code-splitting and compiled routes",
+    "Deploy to 30+ platforms without configuration changes",
+    "Runtime-agnostic: runs on Node.js, Bun, Deno, Cloudflare Workers, and more",
+    "Built-in caching layer with stale-while-revalidate support",
+    "Key-value storage abstraction with 20+ drivers via unstorage",
+    "Built-in SQL database layer with SQLite default and 10+ connectors",
+    "Plugin system for extending server runtime behavior",
+    "Scheduled and on-demand tasks with cron support",
+    "Vite integration for full-stack frontend + backend builds",
+    "Zero-config TypeScript support with auto-imports"
+  ],
+  "publicApiSurface": [
+    "defineHandler()",
+    "defineRouteMeta()",
+    "definePlugin()",
+    "defineTask()",
+    "defineNitroConfig()",
+    "defineNitroPreset()",
+    "defineCachedHandler()",
+    "defineCachedFunction()",
+    "useStorage()",
+    "useDatabase()",
+    "runTask()",
+    "serverFetch()",
+    "useRuntimeConfig()",
+    "nitro() [Vite plugin]",
+    "createNitro()",
+    "build()",
+    "createDevServer()",
+    "prerender()",
+    "CLI: nitro dev",
+    "CLI: nitro build",
+    "CLI: nitro deploy",
+    "CLI: nitro preview",
+    "CLI: nitro task"
+  ]
 }
